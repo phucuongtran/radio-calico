@@ -150,18 +150,27 @@ Khi phát triển website, thêm bảng trong `database.py` và tuyến xử lý
 Chạy kiểm thử:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe scripts/test.py
+.\.venv\Scripts\python.exe scripts/test.py --ratings
 ```
 
+Lệnh đầu chạy cả backend và frontend; `--ratings` chỉ chạy phần đánh giá. Python cần có dependency trong `requirements.txt`, và `node` cần có trong PATH. Dùng thêm `--backend` hoặc `--frontend` để chọn một phía. Trên Linux/WSL, thay `.\.venv\Scripts\python.exe` bằng `.venv/bin/python`. Runner báo kết quả từng phía, vẫn chạy frontend khi backend lỗi và trả mã lỗi nếu có bộ test thất bại hoặc thiếu Node.
+
+Backend có unit test chuẩn hóa bài hát/session trong `tests/test_ratings_unit.py` và integration test API/SQLite trong `tests/test_ratings.py`; fixture dùng chung nằm ở `tests/support.py`. Frontend kiểm tra riêng HTTP client trong `test/ratings-api.test.cjs` và controller trong `test/ratings.test.cjs`, dùng DOM, fetch và timer mô phỏng từ `test/helpers/ratings.cjs`. Các ca lỗi bao gồm cookie/CSRF sai, payload quá lớn, lỗi database, response sai định dạng, timeout, đổi bài khi request chưa xong và xác nhận lại phiếu khi mất response POST. Test dùng dữ liệu tạm và không gọi dịch vụ radio thật.
+
+GitHub Actions tại `.github/workflows/tests.yml` chạy toàn bộ test khi push hoặc tạo/cập nhật pull request, trên Ubuntu/Windows với Python 3.11/3.12 và Node 22. Chi tiết cấu trúc và cách bổ sung test xem [README.md](README.md#verify). Kết quả CI cần được xác minh sau khi đẩy workflow lên GitHub.
+
 Các kiểm thử dùng cơ sở dữ liệu tạm để kiểm tra trang web, tài nguyên tĩnh, kết nối và lỗi cơ sở dữ liệu, lưu dữ liệu qua lần khởi tạo ứng dụng mới, cấu hình SQLite và việc ngăn truy cập file riêng tư.
+
+Để chỉ chạy backend trực tiếp: `.\.venv\Scripts\python.exe -m unittest discover -v`.
 
 Chạy test controller JavaScript bằng Node.js, không cần `npm install`:
 
 ```powershell
-& 'C:\Program Files\nodejs\node.exe' --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs
+& 'C:\Program Files\nodejs\node.exe' --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs test/ratings-api.test.cjs
 ```
 
-Nếu Node.js và npm có trong PATH, có thể dùng `npm test`. Các controller nhận môi trường mô phỏng trực tiếp qua hàm khởi tạo; test không gọi stream thật. Khi sửa player, kiểm tra thêm playback bằng trình duyệt có Internet để xác minh CDN, CORS và codec.
+Nếu Node.js và npm có trong PATH, có thể dùng `npm test` hoặc `npm run test:ratings` cho riêng đánh giá. Các controller nhận môi trường mô phỏng trực tiếp qua hàm khởi tạo; test không gọi stream thật. Khi sửa player, kiểm tra thêm playback bằng trình duyệt có Internet để xác minh CDN, CORS và codec.
 
 Kiểm tra các thư viện phụ thuộc:
 

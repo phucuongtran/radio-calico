@@ -14,12 +14,12 @@ Use an installed Python 3.11+ interpreter with its venv support:
 cd ~/radiocalico
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m unittest discover -v
-node --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs
+.venv/bin/python scripts/test.py
 .venv/bin/python app.py --debug
 ```
 
 Dependency installation requires network access. Node is needed only for JavaScript tests.
+Run `.venv/bin/python scripts/test.py --ratings` for just the backend and frontend rating suites; add `--backend` or `--frontend` to select one side. See [README.md](README.md#verify) for test organization and helper usage. The runner uses the Python interpreter that launched it and returns a nonzero status if a selected suite fails.
 Open http://localhost:3000 while the server runs. Stop it with Ctrl+C.
 PowerShell background.ps1 manages the Windows server only.
 The existing README files describe the previous Windows setup.

@@ -9,7 +9,7 @@
 | Frontend | JavaScript thuần dùng ES modules, CSS chia theo thành phần; không có bước build asset. |
 | Âm thanh | HTML audio, HLS.js 1.6.19 từ jsDelivr; native HLS dự phòng. |
 | Lưu trữ | SQLite qua `sqlite3` tích hợp Python; không dùng ORM. |
-| Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`. |
+| Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`; runner chung `scripts/test.py`. |
 | Vận hành | Flask development server, script PowerShell quản lý server nền. |
 
 Dependency Python được ghim trong [requirements.txt](requirements.txt). Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
@@ -56,9 +56,11 @@ radiocalico/
 │   └── images/
 │       └── radio-calico-logo.png
 ├── scripts/
+│   ├── test.py             # Runner chung cho backend/frontend
 │   └── background.ps1      # Quản lý server nền
-├── tests/                  # Integration test Python
-├── test/                   # Controller test Node.js
+├── tests/                  # Unit/integration test Python; support.py tạo SQLite tạm
+├── test/                   # Test Node.js cho controller/API; helpers/ mô phỏng trình duyệt
+├── .github/workflows/tests.yml # CI Ubuntu/Windows, Python 3.11/3.12, Node 22
 ├── RadioCalicoStyle/       # Tài nguyên thương hiệu gốc
 ├── public/                 # Thư mục trống hiện tại
 ├── data/                   # Database cục bộ
@@ -82,7 +84,8 @@ radiocalico/
 | `static/metadata.js`, `static/metadata-data.js` | Controller poll/render và hàm chuẩn hóa feed độc lập với DOM. |
 | `static/ratings.js`, `static/ratings-api.js` | Controller xử lý lựa chọn/race; API client quản lý HTTP, timeout và hủy request. |
 | `static/style.css`, `static/styles/`, `static/images/` | Entry CSS, stylesheet theo thành phần và ảnh công khai. |
-| `tests/`, `test/` | Integration test Python (`test_*.py`) và controller test Node (`*.test.cjs`). |
+| `tests/`, `test/` | Unit/integration test Python (`test*.py`) và controller/API test Node (`*.test.cjs`), có helper dùng chung. |
+| `scripts/test.py` | Chạy hai phía, lọc `--ratings`, chọn `--backend`/`--frontend`, tổng hợp mã lỗi. |
 | `scripts/background.ps1` | Start/stop server nền; log trong `logs/`. |
 
 ## Luồng xử lý

@@ -27,7 +27,7 @@ When playback does not resume within 25 seconds, the player stops the session an
 Player controller tests use Node's built-in test runner, without installing dependencies:
 
 ```powershell
-& 'C:\Program Files\nodejs\node.exe' --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs
+& 'C:\Program Files\nodejs\node.exe' --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs test/ratings-api.test.cjs
 ```
 
 These controller tests simulate media events; check actual playback with an internet-connected browser to verify the station, CDN availability, CORS headers, and codec support end to end.
@@ -133,6 +133,36 @@ Run a SQL statement:
 The command accepts one statement at a time, including writes, and commits changes. Add website tables in `database.py`; use parameterized SQL for user input. To back up the database, stop the server and copy the entire `data/` folder, including any SQLite sidecar files.
 
 ## Verify
+
+Run all backend and frontend tests with the Python interpreter containing the dependencies from `requirements.txt` and `node` on PATH:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/test.py
+.\.venv\Scripts\python.exe scripts/test.py --ratings
+```
+
+On Linux/WSL:
+
+```bash
+.venv/bin/python scripts/test.py
+.venv/bin/python scripts/test.py --ratings
+```
+
+The shared runner works from any working directory when invoked by its path, uses that same Python interpreter for backend tests, discovers JavaScript files without shell wildcard expansion, and reports each suite separately. It returns a nonzero exit code if either suite fails or Node is missing; a backend failure still allows frontend tests to run. Combine `--ratings` with `--backend` or `--frontend` to select one side. `npm test` runs all frontend tests; `npm run test:ratings` runs just the rating controller and API client tests.
+
+| Test file | Responsibility |
+| --- | --- |
+| `tests/test_ratings_unit.py` | Song normalization, identity boundaries, and listener/CSRF session creation without a database. |
+| `tests/test_ratings.py` | Flask API and real temporary SQLite: votes, concurrency, persistence, cookie/CSRF checks, invalid bodies, size limits, and database failures. |
+| `test/ratings-api.test.cjs` | HTTP payloads, Unicode query strings, credentials, CSRF headers, errors, cancellation, and timeout cleanup. |
+| `test/ratings.test.cjs` | Button state, accessible labels, response validation, track races, and confirmation after an uncertain POST. |
+| `tests/test_test_runner.py` | Suite selection, failure propagation, and missing runtime handling. |
+
+Extend backend integration tests using `tests/support.py`, which creates and cleans up a separate SQLite database per test. Frontend tests import helpers from `test/helpers/ratings.cjs` and call `initRatings` with simulated DOM, queued HTTP responses, and manually triggered timers. `settle()` flushes promise continuations; `abortableResponse` simulates a fetch that rejects on abort. For late-response races, queue a deferred response that intentionally ignores abort. Tests make no station/CDN requests and never open the project's database. They do not verify real browser keyboard interaction or playback.
+
+The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
+
+Individual backend checks and the local server health check remain available:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -v

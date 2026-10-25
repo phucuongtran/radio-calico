@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test test/*.test.cjs",
+    "test:ratings": "node --test test/ratings-api.test.cjs test/ratings.test.cjs"
   }
 }

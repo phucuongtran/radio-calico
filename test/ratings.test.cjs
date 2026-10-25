@@ -2,42 +2,8 @@ const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 let initRatings;
 before(async () => { ({ initRatings } = await import('../static/ratings.js')); });
-
-class Element {
-  constructor() { this.handlers = {}; this.attributes = {}; this.textContent = ''; }
-  addEventListener(name, callback) { this.handlers[name] = callback; }
-  setAttribute(name, value) { this.attributes[name] = value; }
-}
-
-const summary = (extra = {}) => ({ thumbs_up: 2, thumbs_down: 1, user_rating: null, csrf_token: 'server-token', ...extra });
-const result = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => data });
-
-function setup(responses) {
-  const ids = ['thumbs-up', 'thumbs-down', 'thumbs-up-count', 'thumbs-down-count', 'rating-status'];
-  const elements = Object.fromEntries(ids.map(id => [id, new Element()]));
-  const window = new Element();
-  const requests = [];
-  const timers = new Map();
-  let timerId = 0;
-  initRatings({
-    document: { getElementById: id => elements[id] }, window, AbortController, URLSearchParams,
-    setTimeout: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; },
-    clearTimeout: id => timers.delete(id),
-    fetch: async (url, options) => {
-      requests.push({ url, ...options });
-      const response = responses.shift();
-      if (response instanceof Error) throw response;
-      if (typeof response === 'function') return response(options);
-      if (!response) throw new Error('No queued response');
-      return response;
-    },
-  });
-  const settle = async () => { for (let index = 0; index < 16; index++) await Promise.resolve(); };
-  return { elements, requests, timers, settle,
-    track: data => window.handlers['radiocalico:track']({ detail: { title: 'Song & title', artist: 'Artist', available: true, ...data } }),
-    click: value => elements[value === 1 ? 'thumbs-up' : 'thumbs-down'].handlers.click(),
-  };
-}
+const { setup: createUi, summary, result, deferred, abortableResponse } = require('./helpers/ratings.cjs');
+const setup = responses => createUi(initRatings, responses);
 
 test('voting waits for track and server data, then displays both shared totals', async () => {
   const ui = setup([result(summary())]);
@@ -112,13 +78,14 @@ test('ratings can switch up, down, and up again without counting the listener tw
 });
 
 test('a late old-song response cannot replace new-song totals', async () => {
-  let finishOld;
-  const ui = setup([() => new Promise(resolve => { finishOld = resolve; }), result(summary({ thumbs_up: 20 }))]);
+  const oldResponse = deferred();
+  // Deliberately ignore abort to verify that even a late response is harmless.
+  const ui = setup([() => oldResponse.promise, result(summary({ thumbs_up: 20 }))]);
   ui.track();
   await ui.settle();
   ui.track({ title: 'New song' });
   await ui.settle();
-  finishOld(result(summary()));
+  oldResponse.resolve(result(summary()));
   await ui.settle();
   assert.equal(ui.elements['thumbs-up-count'].textContent, '20');
 });
@@ -232,4 +199,90 @@ test('a timed-out POST checks committed totals before accepting another vote', a
   assert.equal(ui.elements['thumbs-up-count'].textContent, '3');
   assert.equal(ui.elements['thumbs-up'].disabled, false);
   assert.equal(ui.timers.size, 0);
+});
+
+const invalidSummaries = [
+  ['null body', null], ['missing fields', {}],
+  ['negative count', summary({ thumbs_up: -1 })],
+  ['fractional count', summary({ thumbs_down: 1.5 })],
+  ['string count', summary({ thumbs_up: '2' })],
+  ['unsafe count', summary({ thumbs_up: Number.MAX_SAFE_INTEGER + 1 })],
+  ['invalid choice', summary({ user_rating: 0 })],
+  ['string choice', summary({ user_rating: '1' })],
+  ['missing choice', summary({ user_rating: undefined })],
+  ['empty CSRF', summary({ csrf_token: '' })],
+  ['non-string CSRF', summary({ csrf_token: 1 })],
+];
+
+for (const [description, data] of invalidSummaries) {
+  test(`a response with ${description} disables voting and can recover on refresh`, async () => {
+    const ui = setup([result(data), result(summary())]);
+    ui.track();
+    await ui.settle();
+    assert.equal(ui.elements['thumbs-up'].disabled, true);
+    assert.equal(ui.elements['thumbs-down'].disabled, true);
+    assert.equal(ui.elements['thumbs-up-count'].textContent, '—');
+    await ui.click(1);
+    assert.equal(ui.requests.length, 1);
+    ui.track();
+    await ui.settle();
+    assert.equal(ui.elements['thumbs-up'].disabled, false);
+    assert.equal(ui.elements['thumbs-up-count'].textContent, '2');
+    assert.equal(ui.timers.size, 0);
+  });
+}
+
+test('a malformed POST response is confirmed by reading the saved vote', async () => {
+  const ui = setup([result(summary()), result({}), result(summary({ user_rating: -1, thumbs_down: 2 }))]);
+  ui.track();
+  await ui.settle();
+  await ui.click(-1);
+  await ui.settle();
+  assert.deepEqual(ui.requests.map(request => request.method || 'GET'), ['GET', 'POST', 'GET']);
+  assert.equal(ui.elements['thumbs-down'].attributes['aria-pressed'], 'true');
+  assert.equal(ui.elements['thumbs-down-count'].textContent, '2');
+  assert.equal(ui.elements['thumbs-up'].disabled, false);
+});
+
+test('failed confirmation keeps voting disabled until a later successful read', async () => {
+  const ui = setup([result(summary()), new Error('Lost POST'), result({}, 503),
+    result(summary({ user_rating: 1, thumbs_up: 3 })),
+  ]);
+  ui.track();
+  await ui.settle();
+  await ui.click(1);
+  await ui.settle();
+  assert.equal(ui.elements['thumbs-up'].disabled, true);
+  await ui.click(1);
+  assert.equal(ui.requests.length, 3);
+  ui.track();
+  await ui.settle();
+  assert.equal(ui.elements['thumbs-up'].disabled, false);
+  assert.equal(ui.elements['thumbs-up-count'].textContent, '3');
+  assert.equal(ui.requests.filter(request => request.method === 'POST').length, 1);
+});
+
+test('changing tracks cancels the previous read and clears both request timers', async () => {
+  const ui = setup([abortableResponse, result(summary({ thumbs_up: 10 }))]);
+  ui.track();
+  await ui.settle();
+  ui.track({ title: 'Next song' });
+  await ui.settle();
+  assert.equal(ui.requests[0].signal.aborted, true);
+  assert.equal(ui.elements['thumbs-up-count'].textContent, '10');
+  assert.equal(ui.elements['thumbs-up'].disabled, false);
+  assert.equal(ui.timers.size, 0);
+});
+
+test('accessible button labels and pressed states follow confirmed totals', async () => {
+  const ui = setup([result(summary()), result(summary({ user_rating: -1, thumbs_down: 2 }))]);
+  ui.track();
+  await ui.settle();
+  assert.equal(ui.elements['thumbs-up'].attributes['aria-pressed'], 'false');
+  assert.equal(ui.elements['thumbs-down'].attributes['aria-pressed'], 'false');
+  assert.equal(ui.elements['thumbs-up'].attributes['aria-label'], 'Thumbs up: 2 votes');
+  await ui.click(-1);
+  assert.equal(ui.elements['thumbs-up'].attributes['aria-pressed'], 'false');
+  assert.equal(ui.elements['thumbs-down'].attributes['aria-pressed'], 'true');
+  assert.equal(ui.elements['thumbs-down'].attributes['aria-label'], 'Thumbs down: 2 votes');
 });
