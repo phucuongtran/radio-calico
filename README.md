@@ -42,6 +42,8 @@ Vietnamese guide: [README.vi.md](README.vi.md).
 
 ## Version control
 
+The project is hosted in the private GitHub repository [phucuongtran/radio-calico](https://github.com/phucuongtran/radio-calico). The `main` branch tracks `origin/main`.
+
 Commit source code, tests, documentation, and supplied brand assets. Local `.env` settings, databases in `data/`, logs, Python virtual environments (`.venv/` and `.venv-windows/`), and the machine-specific `migration-wsl-receipt.json` are excluded by `.gitignore`.
 
 ## Run
