@@ -1,6 +1,7 @@
 """Probe the running HTTP server and its database using only the standard library."""
 
 import json
+import os
 import sys
 from urllib.request import urlopen
 
@@ -9,7 +10,8 @@ def main():
     try:
         with urlopen('http://127.0.0.1:3000/api/health', timeout=3) as response:
             data = json.load(response)
-        return int(data != {'status': 'ok', 'database': 'connected', 'engine': 'sqlite'})
+        engine = 'postgresql' if os.environ.get('DATABASE_URL') else 'sqlite'
+        return int(data != {'status': 'ok', 'database': 'connected', 'engine': engine})
     except (OSError, ValueError):
         return 1
 

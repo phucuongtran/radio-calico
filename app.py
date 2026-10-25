@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 
 from config import PROJECT_DIRECTORY, load_settings
-from database import close_db, get_db, init_db
+from database import DATABASE_ERRORS, close_db, database_engine, get_db, init_db
 from diagnostics import MAX_DIAGNOSTIC_BYTES, filter_diagnostic
 from ratings import ensure_listener, ratings
 
@@ -28,7 +27,8 @@ def create_app(test_config=None):
     app.config.update(load_settings())
     if test_config is not None:
         app.config.update(test_config)
-    app.config['DATABASE_PATH'] = str((PROJECT_DIRECTORY / Path(app.config['DATABASE_PATH'])).resolve())
+    if not app.config.get('DATABASE_URL'):
+        app.config['DATABASE_PATH'] = str((PROJECT_DIRECTORY / Path(app.config['DATABASE_PATH'])).resolve())
     app.teardown_appcontext(close_db)
 
     with app.app_context():
@@ -49,8 +49,8 @@ def create_app(test_config=None):
     def health():
         try:
             get_db().execute('SELECT 1 AS connected').fetchone()
-            return jsonify(status='ok', database='connected', engine='sqlite')
-        except sqlite3.Error:
+            return jsonify(status='ok', database='connected', engine=database_engine())
+        except DATABASE_ERRORS:
             app.logger.exception('Database health check failed')
             return jsonify(status='error', database='unavailable'), 503
 
@@ -87,7 +87,7 @@ def create_app(test_config=None):
 def main():
     parser = argparse.ArgumentParser(description='Radio Calico Flask development server')
     parser.add_argument('command', nargs='?', choices=['serve', 'db'], default='serve')
-    parser.add_argument('sql', nargs='?', default="SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
+    parser.add_argument('sql', nargs='?', default=None)
     parser.add_argument('--debug', action='store_true', help='Enable the local debugger and automatic reload')
     parser.add_argument('--pid-file', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -95,7 +95,13 @@ def main():
     if args.command == 'db':
         with app.app_context():
             database = get_db()
-            cursor = database.execute(args.sql)
+            statement = args.sql
+            if statement is None:
+                statement = ("SELECT table_name AS name FROM information_schema.tables "
+                             "WHERE table_schema = current_schema() ORDER BY table_name"
+                             if database_engine() == 'postgresql' else
+                             "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
+            cursor = database.execute(statement)
             if cursor.description:
                 for row in cursor.fetchall():
                     print(dict(row))

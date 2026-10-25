@@ -1,6 +1,8 @@
 # Radio Calico in Ubuntu-22.04
 
-For Docker Development and Production without installing Python dependencies in WSL, see [DOCKER.md](DOCKER.md). With Docker Engine or Docker Desktop WSL integration, use `docker compose -f compose.dev.yaml up --build` or `docker compose -f compose.prod.yaml up --build -d --wait`. The setup below is for running Python directly on WSL.
+With GNU Make installed, use `make dev`, `make prod`, and `make test` from this folder. Before Production, run `make env` and set `POSTGRES_PASSWORD` in `.env.docker`. `make test` runs in Docker; `make test-local` uses the local Python/Node environment. `make help` lists all targets. Make inherits `DOCKER_CONFIG`, including the WSL workaround below.
+
+For Docker Development and Production without installing Python dependencies in WSL, see [DOCKER.md](DOCKER.md). With Docker Engine or Docker Desktop WSL integration, use `docker compose -f compose.dev.yaml up --build` or `docker compose --env-file .env.docker -f compose.prod.yaml up --build -d --wait`. Production uses Nginx/Gunicorn/PostgreSQL and requires POSTGRES_PASSWORD in a private .env.docker copied from the example. The setup below is for running Python directly on WSL with SQLite.
 
 If Compose reports a missing `/usr/local/lib/docker/cli-plugins/docker-buildx` while `docker buildx version` works, check for stale Docker Desktop WSL plugin links. Repair the Docker CLI plugin installation or use a separate `DOCKER_CONFIG` directory with working plugins in `cli-plugins/`. Local Docker verification in this workspace used `DOCKER_CONFIG=/tmp/radiocalico-docker-tools` to bypass those stale links; this temporary directory is not part of the application or its images.
 

@@ -1,8 +1,21 @@
-# Radio Calico — Flask and SQLite
+# Radio Calico — Flask, PostgreSQL and Nginx
 
-Radio Calico's responsive live radio page uses Flask 3.1.3, Python 3.11, and Python's built-in `sqlite3` module. Open **http://127.0.0.1:3000** while the server is running. Local commands and Docker Compose bind to this computer by default.
+Radio Calico uses Flask 3.1.3 and Python 3.11. Development uses SQLite; Production uses PostgreSQL 17 and Nginx in front of the Gunicorn API. Open **http://127.0.0.1:3000** while the server is running. Local commands and Docker Compose bind to this computer by default.
 
 ## Docker Development and Production
+
+With GNU Make available (Linux, macOS, or WSL), the shortcuts are:
+
+```bash
+make dev          # Development in the foreground
+make env          # Create .env.docker once; set POSTGRES_PASSWORD before Production
+make prod         # Production in the background
+make test         # All tests in Docker; no host Python/Node needed
+```
+
+Run `make help` for all targets. `make dev-down` / `make prod-down` stop containers and preserve database volumes; `make dev-status` / `make prod-status` show status, and `make dev-logs` / `make prod-logs` follow logs. `make env` preserves an existing environment file. `make test-ratings`, `make test-backend`, and `make test-frontend` select a Docker test suite. Use `make test-local` for local Python/Node tests or `make test-docker` for isolated container smoke tests including real PostgreSQL (requires host Python 3). Tests without `TEST_DATABASE_URL` report the PostgreSQL integration cases as skipped; `make test-docker` runs them against a disposable database.
+
+Override settings as needed, for example `make prod ENV_FILE=.env.docker` or `make test-local PYTHON=.venv/bin/python TEST_ARGS=--ratings`. Make inherits Docker environment variables such as `DOCKER_CONFIG`, `DEV_PORT`, and `PROD_PORT`. Development and Production default to the same host port, so stop one or select a different port before starting the other.
 
 With Docker Engine/Desktop, Compose, and Buildx installed, run either environment without installing application dependencies on the host:
 
@@ -10,11 +23,11 @@ With Docker Engine/Desktop, Compose, and Buildx installed, run either environmen
 # Development: Flask reload, source mount, Python and Node test tools
 docker compose -f compose.dev.yaml up --build
 
-# Production: Gunicorn, persistent SQLite volume, immutable runtime
-docker compose -f compose.prod.yaml up --build -d --wait
+# Production: first copy .env.docker.example to .env.docker and set POSTGRES_PASSWORD
+docker compose --env-file .env.docker -f compose.prod.yaml up --build -d --wait
 ```
 
-Both default to port 3000; stop one before starting the other or set different `DEV_PORT`/`PROD_PORT` values. They use separate named volumes and run as a non-root user. `docker compose -f compose.prod.yaml down` keeps saved votes and the cookie signing secret. See [DOCKER.md](DOCKER.md) for environment settings, tests inside Docker, backups, and shipping a prebuilt image to another server. The development image includes Node 22 for tests; the production image includes Gunicorn 26.2.0 and the application without test tooling.
+Both default to port 3000; stop one before starting the other or set different `DEV_PORT`/`PROD_PORT` values. Production publishes only Nginx, which serves HTML/static files and proxies `/api/*` to Gunicorn. PostgreSQL has a persistent volume and no published port. It starts a new database; existing SQLite files/volumes remain untouched. `docker compose --env-file .env.docker -f compose.prod.yaml down` keeps saved votes and the cookie signing secret. See [DOCKER.md](DOCKER.md) for environment settings, tests inside Docker, backups, and shipping a prebuilt image to another server. Production requires a private `POSTGRES_PASSWORD`; see the example environment file and DOCKER.md before starting.
 
 ## Radio player
 
@@ -28,9 +41,9 @@ The interface uses the supplied Radio Calico logo and brand colors. `static/play
 
 Now playing includes album art from `https://d3d4yli4hf5bmh.cloudfront.net/cover.jpg`. The image URL refreshes when the current title, artist, or album changes, bypassing the previous cover's browser cache. Failed images fall back to the Radio Calico logo and retry on the next metadata update. The current cover is also provided to the browser's media session.
 
-Now playing also includes thumbs-up and thumbs-down buttons with shared totals from every listener using this server. Ratings are saved in SQLite's `song_ratings` table. Listeners can change their choice as often as they like: each submission atomically replaces their previous rating for that song. A database primary key on the song and listener identity keeps exactly one current vote per listener, including concurrent requests from multiple tabs. Selecting the same thumb again does not add a vote. Songs are identified by artist and title, normalizing Unicode, whitespace, and case. Totals refresh with the station metadata and immediately after voting. The selected thumb stays highlighted and both buttons remain available after saving. Buttons are disabled while saving or waiting for reliable current-song information.
+Now playing also includes thumbs-up and thumbs-down buttons with shared totals from every listener using this server. Ratings are saved in the `song_ratings` table of SQLite in Development or PostgreSQL in Production. Listeners can change their choice as often as they like: each submission atomically replaces their previous rating for that song. A database primary key on the song and listener identity keeps exactly one current vote per listener, including concurrent requests from multiple tabs. Selecting the same thumb again does not add a vote. Songs are identified by artist and title, normalizing Unicode, whitespace, and case. Totals refresh with the station metadata and immediately after voting. The selected thumb stays highlighted and both buttons remain available after saving. Buttons are disabled while saving or waiting for reliable current-song information.
 
-Listener identity uses a signed, HttpOnly, SameSite=Lax browser cookie lasting up to one year, with a signing secret persisted in the private SQLite database. A session-bound CSRF token is required to submit votes. No account or browser fingerprint is required. Duplicate prevention applies to that browser identity: clearing cookies, using a different browser/device, or letting the cookie expire creates a new identity. Enforcing one vote per human across devices would require sign-in.
+Listener identity uses a signed, HttpOnly, SameSite=Lax browser cookie lasting up to one year, with a signing secret persisted in the private database. A session-bound CSRF token is required to submit votes. No account or browser fingerprint is required. Duplicate prevention applies to that browser identity: clearing cookies, using a different browser/device, or letting the cookie expire creates a new identity. Enforcing one vote per human across devices would require sign-in.
 
 `GET /api/ratings?title=...&artist=...` returns `thumbs_up`, `thumbs_down`, `user_rating` (`1`, `-1`, or `null`), and a `csrf_token`. `POST /api/ratings` accepts JSON `{ "title": "...", "artist": "...", "rating": 1 }` (or `-1`) with `X-CSRF-Token`. Successful ratings and changes return HTTP 200 with the current choice and shared totals. Repeated submissions of the same choice leave the totals unchanged. The server issues the listener identity; client-supplied listener IDs are ignored.
 
@@ -106,6 +119,7 @@ No virtual environment activation is needed when using the explicit interpreter 
 ```dotenv
 PORT=3000
 DATABASE_PATH=./data/radiocalico.sqlite
+DATABASE_URL=
 ```
 
 Process environment variables take precedence. Relative database paths resolve from the project folder. Restart the server after changing `.env`; if it is missing, run `Copy-Item .env.example .env`.
@@ -113,7 +127,7 @@ Process environment variables take precedence. Relative database paths resolve f
 | Path | Purpose |
 | --- | --- |
 | `app.py` | Flask application factory, routes, server entry point, and SQL command. |
-| `database.py` | SQLite connections, teardown, and initial schema. |
+| `database.py` | SQLite/PostgreSQL connections, teardown, and initial schemas. |
 | `diagnostics.py` | Allowed playback diagnostic events, fields, and payload filtering. |
 | `ratings.py` | Shared rating totals, signed browser identity, validation, and changeable rating API. |
 | `config.py` | Loads local settings. |
@@ -170,11 +184,12 @@ The shared runner works from any working directory when invoked by its path, use
 | `tests/test_ratings.py` | Flask API and real temporary SQLite: votes, concurrency, persistence, cookie/CSRF checks, invalid bodies, size limits, and database failures. |
 | `test/ratings-api.test.cjs` | HTTP payloads, Unicode query strings, credentials, CSRF headers, errors, cancellation, and timeout cleanup. |
 | `test/ratings.test.cjs` | Button state, accessible labels, response validation, track races, and confirmation after an uncertain POST. |
+| `tests/test_ratings_postgres.py` | Reuses the rating API suite against real PostgreSQL in disposable test schemas; requires `TEST_DATABASE_URL`. |
 | `tests/test_test_runner.py` | Suite selection, failure propagation, and missing runtime handling. |
 
 Extend backend integration tests using `tests/support.py`, which creates and cleans up a separate SQLite database per test. Frontend tests import helpers from `test/helpers/ratings.cjs` and call `initRatings` with simulated DOM, queued HTTP responses, and manually triggered timers. `settle()` flushes promise continuations; `abortableResponse` simulates a fetch that rejects on abort. For late-response races, queue a deferred response that intentionally ignores abort. Tests make no station/CDN requests and never open the project's database. They do not verify real browser keyboard interaction or playback.
 
-The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build both targets, test actual HTTP and database persistence, and run the complete suite inside Development. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
+The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build the application images, test Nginx/PostgreSQL HTTP and persistence, run the complete suite inside Development, and run the rating API suite against real PostgreSQL. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
 
 Individual backend checks and the local server health check remain available:
 
@@ -184,6 +199,6 @@ Individual backend checks and the local server health check remain available:
 Invoke-RestMethod http://127.0.0.1:3000/api/health
 ```
 
-Tests cover pages and assets, database connectivity and failure handling, persistence across application restarts, database settings, and private-file access. The health endpoint executes an actual database query and returns `status: ok`, `database: connected`, and `engine: sqlite` when healthy.
+Tests cover pages and assets, database connectivity and failure handling, persistence across application restarts, database settings, and private-file access. The health endpoint executes an actual database query and returns `status: ok`, `database: connected`, and `engine: sqlite` in Development or `engine: postgresql` in Production when healthy.
 
-If the port is occupied for a local Flask process, stop the existing server or change `PORT` in `.env` and restart. Docker host ports use `DEV_PORT`/`PROD_PORT` instead. Refresh the browser after changing styles or browser JavaScript. The direct Flask commands are for local development; use the Production Docker target for a Gunicorn deployment.
+If the port is occupied for a local Flask process, stop the existing server or change `PORT` in `.env` and restart. Docker host ports use `DEV_PORT`/`PROD_PORT` instead. Refresh the browser after changing styles or browser JavaScript. The direct Flask commands are for local development; use the Production Compose stack for Nginx, Gunicorn, and PostgreSQL.

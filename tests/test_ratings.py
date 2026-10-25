@@ -4,7 +4,7 @@ from threading import Barrier
 from unittest.mock import Mock, patch
 
 from app import create_app
-from database import get_db
+from database import INTEGRITY_ERRORS, get_db, parameter
 from tests.support import RatingsTestCase
 
 
@@ -27,7 +27,7 @@ class RatingsIntegrationTests(RatingsTestCase):
             self.assertEqual((response.json['thumbs_up'], response.json['thumbs_down'], response.json['user_rating']),
                              (int(value == 1), int(value == -1), value))
         with self.app.app_context():
-            self.assertEqual(get_db().execute('SELECT COUNT(*) FROM song_ratings').fetchone()[0], 1)
+            self.assertEqual(get_db().execute('SELECT COUNT(*) AS count FROM song_ratings').fetchone()['count'], 1)
 
     def test_shared_totals_keep_each_listeners_vote_separate(self):
         second = self.app.test_client()
@@ -128,8 +128,9 @@ class RatingsIntegrationTests(RatingsTestCase):
 
     def test_database_itself_rejects_invalid_ratings(self):
         with self.app.app_context():
-            with self.assertRaises(sqlite3.IntegrityError):
-                get_db().execute('INSERT INTO song_ratings (song_key, listener_id, title, artist, rating) VALUES (?, ?, ?, ?, ?)', ('song', 'listener', 'Song', 'Artist', 0))
+            with self.assertRaises(INTEGRITY_ERRORS):
+                placeholders = ', '.join([parameter()] * 5)
+                get_db().execute(f'INSERT INTO song_ratings (song_key, listener_id, title, artist, rating) VALUES ({placeholders})', ('song', 'listener', 'Song', 'Artist', 0))
 
     def test_a_token_without_its_session_cannot_save_a_vote(self):
         token = self.read().json['csrf_token']
@@ -216,15 +217,25 @@ class RatingsIntegrationTests(RatingsTestCase):
         self.assertEqual(self.vote(1, token=token).status_code, 200)
         self.assertEqual(self.read().json['thumbs_up'], 1)
         with self.app.app_context():
-            self.assertEqual(get_db().execute('SELECT COUNT(*) FROM song_ratings').fetchone()[0], 1)
+            self.assertEqual(get_db().execute('SELECT COUNT(*) AS count FROM song_ratings').fetchone()['count'], 1)
+
+    def test_rollback_failure_still_returns_an_actionable_database_error(self):
+        token = self.read().json['csrf_token']
+        database = Mock()
+        database.execute.side_effect = sqlite3.OperationalError('connection lost')
+        database.rollback.side_effect = sqlite3.OperationalError('connection is closed')
+        with patch('ratings.get_db', return_value=database), self.assertLogs(self.app.logger, level='ERROR'):
+            response = self.vote(1, token=token)
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('error', response.json)
 
     def test_changing_a_vote_preserves_its_creation_timestamp(self):
         self.vote(1)
         with self.app.app_context():
             database = get_db()
-            database.execute("UPDATE song_ratings SET created_at = ?", ('2000-01-01T00:00:00Z',))
+            database.execute(f'UPDATE song_ratings SET created_at = {parameter()}', ('2000-01-01T00:00:00Z',))
             database.commit()
         self.vote(-1)
         with self.app.app_context():
-            self.assertEqual(get_db().execute('SELECT created_at FROM song_ratings').fetchone()[0],
+            self.assertEqual(get_db().execute('SELECT created_at FROM song_ratings').fetchone()['created_at'],
                              '2000-01-01T00:00:00Z')
