@@ -1,0 +1,33 @@
+name: radio-calico-prod
+
+services:
+  app:
+    image: ${RADIO_CALICO_IMAGE:-radio-calico}:production
+    build:
+      context: .
+      target: production
+    ports:
+      - "${PROD_BIND:-127.0.0.1}:${PROD_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_PATH: /data/radiocalico.sqlite
+    volumes:
+      - ratings-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ratings-data:

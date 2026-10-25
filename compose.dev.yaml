@@ -1,0 +1,21 @@
+name: radio-calico-dev
+
+services:
+  app:
+    image: ${RADIO_CALICO_IMAGE:-radio-calico}:development
+    build:
+      context: .
+      target: development
+    ports:
+      - "127.0.0.1:${DEV_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_PATH: /data/radiocalico.sqlite
+    volumes:
+      - .:/app:ro
+      - ratings-data:/data
+    init: true
+    stop_grace_period: 35s
+
+volumes:
+  ratings-data:

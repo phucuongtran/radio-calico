@@ -27,6 +27,7 @@
 - Controller: chạy `node --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs test/ratings-api.test.cjs`.
 - Runner chung: chạy `.\.venv\Scripts\python.exe scripts/test.py` trên Windows hoặc `.venv/bin/python scripts/test.py` trên Linux/WSL. Dùng `--ratings` để chạy riêng rating, thêm `--backend`/`--frontend` để chọn một phía. Xem phần Verify trong README để dùng helper và bổ sung test.
 - Thêm test hồi quy cho thay đổi có rủi ro; kiểm tra phát âm thanh thực tế khi sửa player.
+- Khi sửa Docker: kiểm tra `docker compose -f compose.dev.yaml config --quiet`, tương tự với `compose.prod.yaml`, rồi chạy `python3 scripts/test_docker.py` nếu có Docker daemon. Script chỉ dọn project/volume tạm của test; không xóa volume dữ liệu người dùng. Xem [DOCKER.md](DOCKER.md).
 - Nếu chỉ sửa tài liệu, kiểm tra nội dung, đường dẫn và lệnh; không bắt buộc chạy test ứng dụng.
 - Báo cáo thay đổi, kiểm tra đã chạy, kết quả và phần chưa xác minh. Không khẳng định test đạt nếu chưa chạy.
 
