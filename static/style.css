@@ -1,0 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;650;700;750;800&family=Open+Sans:wght@400;500;600;700&display=swap');
+
+/* Component styles are imported in their original cascade order. */
+@import url('styles/base.css');
+@import url('styles/listening-room.css');
+@import url('styles/tracks.css');
+@import url('styles/player.css');
+@import url('styles/sections.css');
+@import url('styles/responsive.css');

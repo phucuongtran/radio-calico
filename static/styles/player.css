@@ -1,0 +1,115 @@
+.player {
+  max-width:100%;
+}
+
+.playback-control {
+  display:inline-flex;
+  align-items:center;
+  gap:18px;
+  min-height:64px;
+  min-width:224px;
+  max-width:100%;
+  padding:10px 24px 10px 12px;
+  border:0;
+  border-radius:8px;
+  background:var(--forest);
+  color:white;
+  text-align:left;
+  transition:background .2s;
+}
+
+.playback-control:hover {
+  background:#306738;
+}
+
+.playback-toggle {
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  flex-shrink:0;
+  border-radius:50%;
+  background:#ffffff12;
+  color:var(--mint);
+}
+
+.playback-toggle .icon {
+  width:24px;
+  height:24px;
+}
+
+.pause-icon,.loading-ring {
+  display:none;
+}
+
+.player[data-state=playing] .play-icon,
+.player[data-state=connecting] .play-icon,
+.player[data-state=buffering] .play-icon {
+  display:none;
+}
+
+.player[data-state=playing] .pause-icon {
+  display:block;
+}
+
+.player[data-state=connecting] .loading-ring,
+.player[data-state=buffering] .loading-ring {
+  display:block;
+}
+
+.loading-ring {
+  height:23px;
+  width:23px;
+  border:2px solid #ffffff5c;
+  border-top-color:white;
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+
+.playback-time {
+  font-size:15px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+.playback-live {
+  color:var(--mint);
+  font-size:13px;
+}
+
+.player-message {
+  font-size:11px;
+  line-height:1.65;
+  color:var(--muted);
+  padding-top:10px;
+  min-height:29px;
+}
+
+.player[data-state=error] .player-message {
+  color:#9b3c28;
+}
+
+.listening-note {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:10px;
+  color:var(--muted);
+  margin:16px 0 0
+}
+
+.listening-note .icon {
+  width:14px;
+  height:14px;
+  color:var(--teal)
+}
+
+.no-script {
+  font-size:12px;
+  line-height:1.6
+}
+
+audio {
+  display:none
+}
+

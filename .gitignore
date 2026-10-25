@@ -1,0 +1,12 @@
+node_modules/
+.npm-cache/
+.env
+data/
+logs/
+*.log
+.venv/
+.venv-windows/
+migration-wsl-receipt.json
+.pip-cache/
+__pycache__/
+*.py[cod]
