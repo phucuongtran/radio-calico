@@ -1,34 +1,14 @@
 import sqlite3
-import tempfile
-import unittest
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from threading import Barrier
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app import create_app
 from database import get_db
+from tests.support import RatingsTestCase
 
 
-class RatingsIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix='radiocalico-ratings-')
-        self.addCleanup(self.directory.cleanup)
-        self.database_path = Path(self.directory.name) / 'ratings.sqlite'
-        self.config = {'TESTING': True, 'DATABASE_PATH': self.database_path}
-        self.app = create_app(self.config)
-        self.client = self.app.test_client()
-        self.song = {'title': 'A Song', 'artist': 'An Artist'}
-
-    def read(self, client=None, song=None):
-        return (client or self.client).get('/api/ratings', query_string=self.song if song is None else song)
-
-    def vote(self, value, client=None, song=None, token=None):
-        client = client or self.client
-        song = song or self.song
-        token = token or self.read(client, song).json['csrf_token']
-        return client.post('/api/ratings', json={**song, 'rating': value}, headers={'X-CSRF-Token': token})
-
+class RatingsIntegrationTests(RatingsTestCase):
     def test_first_read_returns_zero_totals_and_a_persistent_private_cookie(self):
         response = self.read()
         self.assertEqual(response.status_code, 200)
@@ -150,3 +130,101 @@ class RatingsIntegrationTests(unittest.TestCase):
         with self.app.app_context():
             with self.assertRaises(sqlite3.IntegrityError):
                 get_db().execute('INSERT INTO song_ratings (song_key, listener_id, title, artist, rating) VALUES (?, ?, ?, ?, ?)', ('song', 'listener', 'Song', 'Artist', 0))
+
+    def test_a_token_without_its_session_cannot_save_a_vote(self):
+        token = self.read().json['csrf_token']
+        stranger = self.app.test_client()
+        response = stranger.post('/api/ratings', json={**self.song, 'rating': 1},
+                                 headers={'X-CSRF-Token': token})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.read().json['thumbs_up'], 0)
+
+    def test_tampered_cookie_cannot_read_or_change_the_original_choice(self):
+        self.vote(1)
+        token = self.read().json['csrf_token']
+        cookie_name = self.app.config['SESSION_COOKIE_NAME']
+        cookie = self.client.get_cookie(cookie_name).value
+        payload, signature = cookie.rsplit('.', 1)
+        corrupted = payload + '.' + ('A' if signature[0] != 'A' else 'B') + signature[1:]
+        stranger = self.app.test_client()
+        stranger.set_cookie(cookie_name, corrupted)
+        response = stranger.post('/api/ratings', json={**self.song, 'rating': -1},
+                                 headers={'X-CSRF-Token': token})
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNone(self.read(stranger).json['user_rating'])
+        self.assertEqual(self.read().json['user_rating'], 1)
+
+    def test_malformed_and_non_object_json_is_rejected_without_writes(self):
+        token = self.read().json['csrf_token']
+        for body in ('{', 'null', '[]', '"text"', '1', 'true'):
+            with self.subTest(body=body):
+                response = self.client.post('/api/ratings', data=body, content_type='application/json',
+                                            headers={'X-CSRF-Token': token})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('error', response.json)
+        self.assertEqual(self.read().json['thumbs_up'], 0)
+
+    def test_non_json_and_oversized_authenticated_requests_are_rejected(self):
+        token = self.read().json['csrf_token']
+        headers = {'X-CSRF-Token': token}
+        self.assertEqual(self.client.post('/api/ratings', data='rating=1', headers=headers).status_code, 415)
+        response = self.client.post('/api/ratings', json={**self.song, 'rating': 1, 'padding': 'x' * 4096},
+                                    headers=headers)
+        self.assertEqual(response.status_code, 413)
+        self.assertIn('error', response.json)
+        self.assertEqual(self.read().json['thumbs_up'], 0)
+
+    def test_get_rejects_missing_blank_and_oversized_song_fields(self):
+        for song in ({}, {'title': 'Song'}, {'artist': 'Artist'},
+                     {'title': ' \t ', 'artist': 'Artist'},
+                     {'title': 'Song', 'artist': 'x' * 301}):
+            with self.subTest(song=song):
+                self.assertEqual(self.read(song=song).status_code, 400)
+
+    def test_api_accepts_300_characters_and_rejects_301_for_each_field(self):
+        token = self.read().json['csrf_token']
+        for field in ('title', 'artist'):
+            with self.subTest(field=field):
+                song = {**self.song, field: 'x' * 300}
+                self.assertEqual(self.read(song=song).status_code, 200)
+                self.assertEqual(self.vote(1, song=song, token=token).status_code, 200)
+                invalid = {**song, field: 'x' * 301}
+                self.assertEqual(self.read(song=invalid).status_code, 400)
+                self.assertEqual(self.vote(-1, song=invalid, token=token).status_code, 400)
+                self.assertEqual(self.read(song=song).json['user_rating'], 1)
+
+    def test_sql_and_commit_failures_roll_back_and_preserve_the_previous_vote(self):
+        token = self.read().json['csrf_token']
+        self.vote(-1, token=token)
+        for method in ('execute', 'commit'):
+            with self.subTest(method=method), self.app.app_context():
+                database = Mock(wraps=get_db())
+                getattr(database, method).side_effect = sqlite3.OperationalError('injected failure')
+                with patch('ratings.get_db', return_value=database), self.assertLogs(self.app.logger, level='ERROR'):
+                    response = self.vote(1, token=token)
+                self.assertEqual(response.status_code, 503)
+                database.rollback.assert_called_once()
+            self.assertEqual(self.read().json['user_rating'], -1)
+            self.assertEqual(self.read().json['thumbs_up'], 0)
+
+    def test_read_failure_after_commit_can_be_confirmed_and_retried_without_duplicates(self):
+        token = self.read().json['csrf_token']
+        with patch('ratings.totals', side_effect=sqlite3.OperationalError('read failed after commit')):
+            with self.assertLogs(self.app.logger, level='ERROR'):
+                self.assertEqual(self.vote(1, token=token).status_code, 503)
+        self.assertEqual(self.read().json['user_rating'], 1)
+        self.assertEqual(self.vote(1, token=token).status_code, 200)
+        self.assertEqual(self.read().json['thumbs_up'], 1)
+        with self.app.app_context():
+            self.assertEqual(get_db().execute('SELECT COUNT(*) FROM song_ratings').fetchone()[0], 1)
+
+    def test_changing_a_vote_preserves_its_creation_timestamp(self):
+        self.vote(1)
+        with self.app.app_context():
+            database = get_db()
+            database.execute("UPDATE song_ratings SET created_at = ?", ('2000-01-01T00:00:00Z',))
+            database.commit()
+        self.vote(-1)
+        with self.app.app_context():
+            self.assertEqual(get_db().execute('SELECT created_at FROM song_ratings').fetchone()[0],
+                             '2000-01-01T00:00:00Z')
