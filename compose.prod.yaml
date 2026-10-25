@@ -1,18 +1,52 @@
 name: radio-calico-prod
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
+  web:
+    image: ${RADIO_CALICO_IMAGE:-radio-calico}:frontend
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "${PROD_BIND:-127.0.0.1}:${PROD_PORT:-3000}:8080"
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+    logging: *logging
+
   app:
     image: ${RADIO_CALICO_IMAGE:-radio-calico}:production
     build:
       context: .
       target: production
-    ports:
-      - "${PROD_BIND:-127.0.0.1}:${PROD_PORT:-3000}:3000"
     environment:
       PORT: "3000"
-      DATABASE_PATH: /data/radiocalico.sqlite
-    volumes:
-      - ratings-data:/data
+      DATABASE_URL: postgresql://
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-radiocalico}
+      PGUSER: ${POSTGRES_USER:-radiocalico}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker or the environment}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+      - database
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
@@ -23,11 +57,31 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 35s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-radiocalico}
+      POSTGRES_USER: ${POSTGRES_USER:-radiocalico}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker or the environment}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging: *logging
+
+networks:
+  database:
+    internal: true
 
 volumes:
-  ratings-data:
+  postgres-data:

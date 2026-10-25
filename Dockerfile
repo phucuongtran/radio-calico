@@ -43,6 +43,18 @@ USER 10001:10001
 
 CMD ["python", "-m", "flask", "--app", "app:create_app()", "run", "--host=0.0.0.0", "--port=3000", "--debug", "--no-debugger"]
 
+FROM base AS frontend-build
+COPY docker/render_frontend.py ./docker/render_frontend.py
+RUN python docker/render_frontend.py /tmp/frontend/index.html
+
+FROM nginxinc/nginx-unprivileged:stable-alpine AS frontend
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=frontend-build /tmp/frontend/index.html /usr/share/nginx/html/index.html
+COPY static/ /usr/share/nginx/html/static/
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/api/health"]
+
 FROM base AS production
 
 USER root

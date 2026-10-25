@@ -15,10 +15,10 @@ Radio Calico là website nghe radio trực tuyến, hiển thị bài hát đang
 ## Phạm vi và giới hạn
 
 - Âm thanh, metadata và ảnh album lấy từ dịch vụ bên ngoài; Flask không chuyển mã hoặc chuyển tiếp âm thanh.
-- SQLite lưu đánh giá và thông tin nội bộ; dữ liệu vẫn còn sau khi khởi động lại ứng dụng.
+- Development dùng SQLite, Production dùng PostgreSQL để lưu đánh giá và thông tin nội bộ; dữ liệu vẫn còn sau khi khởi động lại container.
 - Không có đăng nhập. Định danh dựa trên cookie trình duyệt; xóa cookie hoặc đổi thiết bị tạo định danh mới. Chưa bảo đảm một phiếu cho mỗi người trên mọi thiết bị.
 - Khả năng phát lossless phụ thuộc trình duyệt, thiết bị, codec và dịch vụ stream. Test mô phỏng không bảo đảm phát thực tế.
-- Hỗ trợ chạy Flask cục bộ và Docker riêng cho Development/Production. Production dùng Gunicorn và volume SQLite trên một host; mặc định publish `127.0.0.1`. Xem [DOCKER.md](DOCKER.md). Việc cấu hình tên miền/TLS và triển khai công khai do môi trường vận hành quản lý.
+- Hỗ trợ chạy Flask cục bộ và Docker riêng cho Development/Production. Production dùng Nginx, Gunicorn và PostgreSQL trong volume riêng; mặc định publish `127.0.0.1`. Xem [DOCKER.md](DOCKER.md). Việc cấu hình tên miền/TLS và triển khai công khai do môi trường vận hành quản lý.
 
 ## Bản đồ tài liệu
 

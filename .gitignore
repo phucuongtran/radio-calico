@@ -3,6 +3,7 @@ node_modules/
 .env
 .env.docker
 *.sqlite*
+*.dump
 radio-calico-*.tar
 data/
 logs/

@@ -8,11 +8,11 @@
 | Template | Jinja2 3.1.6, HTML render phía server. |
 | Frontend | JavaScript thuần dùng ES modules, CSS chia theo thành phần; không có bước build asset. |
 | Âm thanh | HTML audio, HLS.js 1.6.19 từ jsDelivr; native HLS dự phòng. |
-| Lưu trữ | SQLite qua `sqlite3` tích hợp Python; không dùng ORM. |
+| Lưu trữ | SQLite/`sqlite3` cho Development; PostgreSQL 17/Psycopg 3.3.6 cho Production; không dùng ORM. |
 | Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`; runner chung `scripts/test.py`. |
-| Vận hành | Flask development server; Docker Development với reload và Production với Gunicorn 26.2.0, volume SQLite. Script PowerShell dành cho server cục bộ. |
+| Vận hành | Flask development server; Docker Development với reload và Production với Nginx frontend, Gunicorn 26.2.0 API và PostgreSQL. Script PowerShell dành cho server cục bộ. |
 
-Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn cho image Production. Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
+Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn và Psycopg cho image Production. Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
 
 ## File structure
 
@@ -22,22 +22,25 @@ radiocalico/
 ├── PROJECT.md              # Tổng quan sản phẩm
 ├── ARCHITECTURE.md         # Kiến trúc và API
 ├── README.md               # Hướng dẫn chạy
+├── Makefile                # Lệnh dev/prod/test, log và dừng container
 ├── README.vi.md            # Hướng dẫn tiếng Việt
 ├── requirements.txt        # Dependency Python
-├── requirements-production.txt # Thêm Gunicorn cho Production
-├── Dockerfile              # Target development và production, chung Python 3.11
+├── requirements-production.txt # Gunicorn và Psycopg cho Production
+├── Dockerfile              # Target development, production API và frontend Nginx
 ├── compose.dev.yaml        # Source bind mount, volume Development
-├── compose.prod.yaml       # Gunicorn, volume Production, runtime chỉ đọc
+├── compose.prod.yaml       # Nginx, Gunicorn, PostgreSQL và volume riêng
 ├── .dockerignore           # Loại secrets, database và môi trường host khỏi build context
 ├── DOCKER.md               # Vận hành và chuyển image giữa các máy
 ├── gunicorn.conf.py        # 1 worker/4 threads, log stdout/stderr
-├── docker/healthcheck.py   # Probe HTTP và SQLite
+├── docker/healthcheck.py   # Probe HTTP và database đang cấu hình
+├── docker/render_frontend.py # Render HTML khi build, không mở database
+├── docker/nginx.conf      # Static frontend và proxy /api/* tới backend
 ├── package.json            # ES modules và lệnh test Node, không có dependency npm
 ├── .env.example            # Cấu hình mẫu
 ├── .gitignore
 ├── app.py                  # Flask factory, route và CLI
 ├── config.py               # Đọc cấu hình
-├── database.py             # Kết nối và schema SQLite
+├── database.py             # Kết nối/schema SQLite và PostgreSQL
 ├── diagnostics.py          # Kiểm tra sự kiện và lọc trường diagnostics
 ├── ratings.py              # API đánh giá
 ├── templates/
@@ -95,8 +98,9 @@ radiocalico/
 | `static/style.css`, `static/styles/`, `static/images/` | Entry CSS, stylesheet theo thành phần và ảnh công khai. |
 | `tests/`, `test/` | Unit/integration test Python (`test*.py`) và controller/API test Node (`*.test.cjs`), có helper dùng chung. |
 | `scripts/test.py` | Chạy hai phía, lọc `--ratings`, chọn `--backend`/`--frontend`, tổng hợp mã lỗi. |
-| `Dockerfile`, `compose.dev.yaml`, `compose.prod.yaml` | Image/Compose riêng cho Development và Production, volume SQLite độc lập. |
-| `gunicorn.conf.py`, `docker/healthcheck.py` | Server Production và health check HTTP/SQLite dùng chung cho hai image. |
+| `Makefile` | Shortcut Docker dev/prod và test; tạo env không ghi đè, dừng container giữ volume; `make help` liệt kê lệnh. |
+| `Dockerfile`, `compose.dev.yaml`, `compose.prod.yaml` | Development Flask/SQLite và Production Nginx/Gunicorn/PostgreSQL; volume độc lập. |
+| `gunicorn.conf.py`, `docker/healthcheck.py` | Server API Production và health check HTTP/database theo engine. |
 | `scripts/test_docker.py` | Smoke test HTTP, rating/CSRF, persistence và chạy suite trong Development bằng tài nguyên Docker tạm. |
 | `scripts/background.ps1` | Start/stop server nền; log trong `logs/`. |
 
@@ -110,7 +114,7 @@ Template nạp `static/main.js` bằng `<script type="module">`. Entry khởi t�
 2. Khi người dùng nhấn phát, `player.js` kết nối trực tiếp CloudFront qua HLS.js hoặc native HLS. Audio không đi qua Flask.
 3. `metadata.js` lấy dữ liệu khi tải trang và làm mới sau 10 giây kể từ lúc request hoàn tất khi trang hiển thị. Chuỗi từ feed được render bằng text.
 4. Metadata phát sự kiện `radiocalico:track` gồm `title`, `artist`, `available`; controller đánh giá dùng sự kiện này để đồng bộ bài hát và khóa nút khi dữ liệu không đáng tin cậy.
-5. `ratings.js` gọi API cùng origin; SQLite là nguồn dữ liệu đánh giá. Controller bỏ qua phản hồi cũ khi đã đổi bài.
+5. `ratings.js` gọi API cùng origin; SQLite (Development) hoặc PostgreSQL (Production) là nguồn dữ liệu đánh giá. Controller bỏ qua phản hồi cũ khi đã đổi bài.
 6. Diagnostics gửi về Flask để ghi log; không chứa định danh người nghe hoặc token đánh giá.
 
 ### Dịch vụ bên ngoài
@@ -131,9 +135,9 @@ API trả JSON; lỗi thường có dạng `{"error":"..."}`. Response có `Cach
 
 ### `GET /api/health`
 
-Thực thi truy vấn SQLite để kiểm tra kết nối:
+Thực thi truy vấn trên database đã cấu hình để kiểm tra kết nối:
 
-- `200`: `{"status":"ok","database":"connected","engine":"sqlite"}`.
+- `200`: `{"status":"ok","database":"connected","engine":"sqlite"}`; Production trả `engine: "postgresql"`.
 - `503`: `{"status":"error","database":"unavailable"}` nếu truy vấn gặp lỗi database.
 
 ### `GET /api/ratings?title=...&artist=...`
@@ -176,11 +180,11 @@ Trả `204` sau khi ghi log, `400` khi payload/event sai, `415` khi không gửi
 
 ## Database và định danh
 
-- `app_metadata`: bảng STRICT với `key` khóa chính và `value`; lưu `created_at` và bí mật ký session `rating_session_secret`.
-- `song_ratings`: bảng STRICT gồm `song_key`, `listener_id`, `title`, `artist`, `rating`, `created_at`; khóa chính ghép `(song_key, listener_id)`, ràng buộc `rating IN (-1, 1)`.
+- `app_metadata`: `key` khóa chính và `value` dạng TEXT; lưu `created_at` và bí mật ký session `rating_session_secret`.
+- `song_ratings`: gồm `song_key`, `listener_id`, `title`, `artist`, `rating`, `created_at`; khóa chính ghép `(song_key, listener_id)`, ràng buộc `rating IN (-1, 1)`. SQLite dùng bảng STRICT/rating INTEGER; PostgreSQL dùng rating SMALLINT và các trường còn lại TEXT.
 - Khóa bài hát là SHA-256 của JSON chứa `[title, artist]` sau chuẩn hóa Unicode NFKC, khoảng trắng và `casefold()`.
 - Ghi phiếu bằng SQL có tham số và UPSERT nguyên tử; đổi phiếu cập nhật dòng hiện có, giữ `created_at` ban đầu.
-- Kết nối bật foreign keys và timeout khóa 5 giây; khởi tạo bật WAL. Schema dùng `CREATE TABLE IF NOT EXISTS`; chưa có framework migration.
+- SQLite bật foreign keys và timeout khóa 5 giây; khởi tạo bật WAL. PostgreSQL dùng kết nối Psycopg theo request, timeout kết nối 5 giây, commit/rollback rõ ràng và đóng kết nối khi teardown. Schema dùng `CREATE TABLE IF NOT EXISTS`; PostgreSQL dùng advisory transaction lock để tuần tự hóa khởi tạo. Chưa có framework migration.
 - Cookie `radiocalico_listener` có chữ ký, `HttpOnly`, `SameSite=Lax`, thời hạn tối đa 365 ngày. Bí mật ký lưu trong database để giữ định danh qua lần khởi động lại. Chữ ký cookie không mã hóa nội dung.
 
 ## Cấu hình và vận hành
@@ -190,12 +194,13 @@ Thứ tự ưu tiên: biến môi trường tiến trình → `.env` → mặc �
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `PORT` | `3000` | Cổng HTTP, trong khoảng 1–65535. |
-| `DATABASE_PATH` | `./data/radiocalico.sqlite` | Đường dẫn tương đối tính từ thư mục dự án. |
+| `DATABASE_PATH` | `./data/radiocalico.sqlite` | Đường dẫn SQLite tương đối tính từ thư mục dự án. |
+| `DATABASE_URL` | Rỗng | Rỗng chọn SQLite; URL `postgresql://` hoặc `postgres://` chọn PostgreSQL. Có thể dùng biến libpq `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT`. |
 
 Khởi động lại sau khi đổi `.env`. Flask CLI bind `127.0.0.1`; `--debug` bật reload/debugger. Script nền ghi `logs/server.log`, `logs/server-error.log` và theo dõi tiến trình bằng PID cùng thời điểm khởi tạo.
 
-Docker sử dụng Python 3.11 và cổng nội bộ `3000`. Compose truyền `DATABASE_PATH=/data/radiocalico.sqlite`; named volume Development/Production tách biệt và giữ cả phiếu lẫn bí mật ký cookie qua lần thay container. Development mount source chỉ đọc, chạy Flask reload và có Node 22 để test. Production dùng Gunicorn 1 worker/4 threads, user UID/GID `10001:10001`, root filesystem chỉ đọc, `/tmp` tạm và log stdout/stderr. Không thay đổi API hoặc schema. Biến `DEV_PORT`, `PROD_PORT`, `PROD_BIND`, `RADIO_CALICO_IMAGE` chỉ dùng cho Compose; xem [.env.docker.example](.env.docker.example) và [DOCKER.md](DOCKER.md).
+Docker Development dùng Python 3.11, Flask reload, Node 22 và SQLite trong volume `ratings-data`. Production có Nginx `web:8080`, Gunicorn `app:3000` và PostgreSQL `db:5432`; chỉ Nginx publish cổng host. HTML được render lúc build, Nginx phục vụ HTML/static và proxy `/api/*` cùng origin. Backend nhận `DATABASE_URL=postgresql://` cùng biến libpq, không chứa password trong URL. Compose yêu cầu `POSTGRES_PASSWORD`, chờ health theo thứ tự db → app → web. Nginx và backend chạy non-root, filesystem chỉ đọc; PostgreSQL có volume mới `postgres-data`, không tái sử dụng/xóa SQLite cũ. Xem [.env.docker.example](.env.docker.example) và [DOCKER.md](DOCKER.md) cho khởi động, credential và backup.
 
-`app.py db` liệt kê bảng; `app.py db "SQL"` chạy một câu SQL và commit, kể cả lệnh ghi. Khi sao lưu, dừng server rồi sao chép toàn bộ `data/`, gồm file SQLite phụ. Không đưa `.env`, dữ liệu, log hoặc bí mật vào quản lý phiên bản.
+`app.py db` liệt kê bảng theo engine; `app.py db "SQL"` chạy một câu SQL và commit, kể cả lệnh ghi. Với SQLite, dừng server rồi sao chép toàn bộ `data/`, gồm file phụ. Với PostgreSQL, dùng `pg_dump`/`pg_restore` như [DOCKER.md](DOCKER.md). Không đưa `.env`, dữ liệu, log hoặc bí mật vào quản lý phiên bản.
 
 Lệnh cài đặt, chạy và test: [README.md](README.md). Mục tiêu sản phẩm: [PROJECT.md](PROJECT.md). Quy tắc làm việc: [AGENTS.md](AGENTS.md).

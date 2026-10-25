@@ -1,4 +1,4 @@
-"""Single-host SQLite deployment with concurrent request threads."""
+"""Production WSGI API server with concurrent request threads."""
 
 bind = '0.0.0.0:3000'
 workers = 1

@@ -6,14 +6,16 @@ Dự án sử dụng **Flask 3.1.3**, **Python 3.11** và mô-đun **sqlite3** c
 
 ## Chạy bằng Docker
 
+Nếu có GNU Make (trên Windows dùng terminal WSL), có thể chạy `make dev`, `make prod`, `make test`. Trước lần chạy Production đầu tiên, dùng `make env` để tạo `.env.docker` rồi đặt `POSTGRES_PASSWORD`. `make env` không ghi đè file đã có. Xem `make help` cho các lệnh dừng, log, trạng thái và chọn bộ test. `make test` chạy trong container; `make test-local` dùng Python/Node trên host; `make test-docker` kiểm tra đầy đủ cả PostgreSQL bằng dữ liệu tạm. Các lệnh dừng `make dev-down` và `make prod-down` giữ nguyên volume.
+
 Máy chủ chỉ cần Docker Engine/Desktop, Compose và Buildx; dependency được cài trong image:
 
 ```bash
 docker compose -f compose.dev.yaml up --build
-docker compose -f compose.prod.yaml up --build -d --wait
+docker compose --env-file .env.docker -f compose.prod.yaml up --build -d --wait
 ```
 
-Chọn một môi trường: Development có Flask reload và công cụ test Python/Node; Production dùng Gunicorn, user không phải root, filesystem chỉ đọc và volume SQLite riêng. Cả hai mặc định dùng cổng 3000, nên cần đổi `DEV_PORT`/`PROD_PORT` nếu chạy đồng thời. Dữ liệu Docker độc lập với `data/` trên host và được giữ khi thay container hoặc chạy `docker compose down`.
+Chọn một môi trường: Development có Flask reload và công cụ test Python/Node; Production dùng Nginx phục vụ frontend, Gunicorn xử lý API và PostgreSQL lưu dữ liệu. Trước khi chạy Production, chép `.env.docker.example` thành `.env.docker` và đặt `POSTGRES_PASSWORD` riêng. Chỉ Nginx mở cổng ra host; PostgreSQL khởi tạo mới trong volume riêng và giữ nguyên SQLite cũ. Cả hai mặc định dùng cổng 3000, nên cần đổi `DEV_PORT`/`PROD_PORT` nếu chạy đồng thời. Dữ liệu Docker độc lập với `data/` trên host và được giữ khi thay container hoặc chạy `docker compose down`.
 
 Xem [DOCKER.md](DOCKER.md) cho hướng dẫn cấu hình, kiểm thử trong container, sao lưu và chuyển image dựng sẵn đến máy chủ mà không cần cài Python hay thư viện ứng dụng.
 
@@ -96,10 +98,12 @@ File `.env` hỗ trợ các dòng cấu hình đơn giản theo dạng `KEY=valu
 ```dotenv
 PORT=3000
 DATABASE_PATH=./data/radiocalico.sqlite
+DATABASE_URL=
 ```
 
 - `PORT`: cổng của máy chủ web.
 - `DATABASE_PATH`: đường dẫn cơ sở dữ liệu; đường dẫn tương đối được tính từ thư mục dự án.
+- `DATABASE_URL`: để trống dùng SQLite; URL PostgreSQL chọn PostgreSQL và cần dependency trong `requirements-production.txt`.
 
 Nếu biến môi trường cùng tên đã được đặt trong tiến trình, giá trị đó được ưu tiên hơn `.env`. Hãy khởi động lại máy chủ sau khi thay đổi file này.
 
@@ -114,7 +118,7 @@ Copy-Item .env.example .env
 | Đường dẫn | Chức năng |
 | --- | --- |
 | `app.py` | Tạo ứng dụng Flask, khai báo tuyến API, chạy máy chủ và lệnh SQL. |
-| `database.py` | Quản lý kết nối SQLite và tạo cấu trúc bảng ban đầu. |
+| `database.py` | Quản lý kết nối/schema SQLite cho Development và PostgreSQL cho Production. |
 | `diagnostics.py` | Kiểm tra sự kiện và lọc trường diagnostics trước khi ghi log. |
 | `ratings.py` | API đánh giá, định danh người nghe và CSRF. |
 | `config.py` | Đọc cấu hình từ `.env` và biến môi trường. |
@@ -207,7 +211,7 @@ Kết quả bình thường:
 }
 ```
 
-API thực hiện truy vấn SQLite để xác nhận kết nối. Nếu xảy ra lỗi truy vấn, API trả mã HTTP 503.
+API truy vấn database để xác nhận kết nối; `engine` là `sqlite` khi chạy cục bộ/Development hoặc `postgresql` trong Production. Nếu xảy ra lỗi truy vấn, API trả mã HTTP 503.
 
 ## 9. Xử lý sự cố
 

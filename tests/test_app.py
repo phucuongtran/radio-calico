@@ -16,7 +16,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix='radiocalico-test-')
         self.addCleanup(self.directory.cleanup)
         self.database_path = Path(self.directory.name) / 'test.sqlite'
-        self.app = create_app({'TESTING': True, 'DATABASE_PATH': self.database_path})
+        self.app = create_app({'TESTING': True, 'DATABASE_PATH': self.database_path, 'DATABASE_URL': ''})
         self.client = self.app.test_client()
 
     def test_website_and_static_assets(self):
@@ -123,7 +123,7 @@ class AppIntegrationTests(unittest.TestCase):
             created_at = database.execute("SELECT value FROM app_metadata WHERE key = 'created_at'").fetchone()[0]
             database.execute('INSERT INTO app_metadata (key, value) VALUES (?, ?)', ('test', 'persisted'))
             database.commit()
-        reopened_app = create_app({'TESTING': True, 'DATABASE_PATH': self.database_path})
+        reopened_app = create_app({'TESTING': True, 'DATABASE_PATH': self.database_path, 'DATABASE_URL': ''})
         with reopened_app.app_context():
             database = get_db()
             self.assertEqual(database.execute("SELECT value FROM app_metadata WHERE key = 'test'").fetchone()[0], 'persisted')

@@ -4,12 +4,11 @@ import hashlib
 import hmac
 import json
 import secrets
-import sqlite3
 import unicodedata
 
 from flask import Blueprint, current_app, jsonify, request, session
 
-from database import get_db
+from database import DATABASE_ERRORS, get_db, parameter
 
 ratings = Blueprint('ratings', __name__)
 
@@ -36,11 +35,12 @@ def song_identity(data):
 
 
 def totals(song_key, title, artist):
-    row = get_db().execute('''
-        SELECT COALESCE(SUM(rating = 1), 0) AS thumbs_up,
-               COALESCE(SUM(rating = -1), 0) AS thumbs_down,
-               MAX(CASE WHEN listener_id = ? THEN rating END) AS user_rating
-        FROM song_ratings WHERE song_key = ?
+    placeholder = parameter()
+    row = get_db().execute(f'''
+        SELECT COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) AS thumbs_up,
+               COALESCE(SUM(CASE WHEN rating = -1 THEN 1 ELSE 0 END), 0) AS thumbs_down,
+               MAX(CASE WHEN listener_id = {placeholder} THEN rating END) AS user_rating
+        FROM song_ratings WHERE song_key = {placeholder}
     ''', (session['listener_id'], song_key)).fetchone()
     return dict(row, title=title, artist=artist, csrf_token=session['rating_csrf'])
 
@@ -54,7 +54,7 @@ def get_ratings():
     ensure_listener()
     try:
         return jsonify(totals(song_key, title, artist))
-    except sqlite3.Error:
+    except DATABASE_ERRORS:
         current_app.logger.exception('Could not read song ratings')
         return jsonify(error='Ratings are temporarily unavailable.'), 503
 
@@ -82,16 +82,21 @@ def submit_rating():
     try:
         database = get_db()
         # Replace the listener's choice atomically, without adding another vote.
-        database.execute('''
+        placeholders = ', '.join([parameter()] * 5)
+        database.execute(f'''
             INSERT INTO song_ratings (song_key, listener_id, title, artist, rating)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ({placeholders})
             ON CONFLICT (song_key, listener_id) DO UPDATE SET rating = excluded.rating
         ''', (song_key, session['listener_id'], title, artist, rating))
         database.commit()
         result = totals(song_key, title, artist)
         return jsonify(result), 200
-    except sqlite3.Error:
+    except DATABASE_ERRORS:
         if database is not None:
-            database.rollback()
+            try:
+                database.rollback()
+            except DATABASE_ERRORS:
+                # A disconnected PostgreSQL session may also reject rollback.
+                pass
         current_app.logger.exception('Could not save song rating')
         return jsonify(error='Your rating could not be saved. Please try again.'), 503

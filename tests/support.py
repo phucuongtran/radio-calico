@@ -12,7 +12,7 @@ class RatingsTestCase(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix='radiocalico-ratings-')
         self.addCleanup(self.directory.cleanup)
         self.database_path = Path(self.directory.name) / 'ratings.sqlite'
-        self.config = {'TESTING': True, 'DATABASE_PATH': self.database_path}
+        self.config = {'TESTING': True, 'DATABASE_PATH': self.database_path, 'DATABASE_URL': ''}
         self.app = create_app(self.config)
         self.client = self.app.test_client()
         self.song = {'title': 'A Song', 'artist': 'An Artist'}
