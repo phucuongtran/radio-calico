@@ -1,6 +1,20 @@
 # Radio Calico — Flask and SQLite
 
-Radio Calico's responsive live radio page uses Flask 3.1.3, Python 3.11, and Python's built-in `sqlite3` module. Open **http://127.0.0.1:3000** while the server is running. It listens only on this computer.
+Radio Calico's responsive live radio page uses Flask 3.1.3, Python 3.11, and Python's built-in `sqlite3` module. Open **http://127.0.0.1:3000** while the server is running. Local commands and Docker Compose bind to this computer by default.
+
+## Docker Development and Production
+
+With Docker Engine/Desktop, Compose, and Buildx installed, run either environment without installing application dependencies on the host:
+
+```bash
+# Development: Flask reload, source mount, Python and Node test tools
+docker compose -f compose.dev.yaml up --build
+
+# Production: Gunicorn, persistent SQLite volume, immutable runtime
+docker compose -f compose.prod.yaml up --build -d --wait
+```
+
+Both default to port 3000; stop one before starting the other or set different `DEV_PORT`/`PROD_PORT` values. They use separate named volumes and run as a non-root user. `docker compose -f compose.prod.yaml down` keeps saved votes and the cookie signing secret. See [DOCKER.md](DOCKER.md) for environment settings, tests inside Docker, backups, and shipping a prebuilt image to another server. The development image includes Node 22 for tests; the production image includes Gunicorn 26.2.0 and the application without test tooling.
 
 ## Radio player
 
@@ -160,7 +174,7 @@ The shared runner works from any working directory when invoked by its path, use
 
 Extend backend integration tests using `tests/support.py`, which creates and cleans up a separate SQLite database per test. Frontend tests import helpers from `test/helpers/ratings.cjs` and call `initRatings` with simulated DOM, queued HTTP responses, and manually triggered timers. `settle()` flushes promise continuations; `abortableResponse` simulates a fetch that rejects on abort. For late-response races, queue a deferred response that intentionally ignores abort. Tests make no station/CDN requests and never open the project's database. They do not verify real browser keyboard interaction or playback.
 
-The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
+The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build both targets, test actual HTTP and database persistence, and run the complete suite inside Development. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
 
 Individual backend checks and the local server health check remain available:
 
@@ -172,4 +186,4 @@ Invoke-RestMethod http://127.0.0.1:3000/api/health
 
 Tests cover pages and assets, database connectivity and failure handling, persistence across application restarts, database settings, and private-file access. The health endpoint executes an actual database query and returns `status: ok`, `database: connected`, and `engine: sqlite` when healthy.
 
-If the port is occupied, stop the existing server or change `PORT` in `.env` and restart. Refresh the browser after changing styles or browser JavaScript. This is a local development setup.
+If the port is occupied for a local Flask process, stop the existing server or change `PORT` in `.env` and restart. Docker host ports use `DEV_PORT`/`PROD_PORT` instead. Refresh the browser after changing styles or browser JavaScript. The direct Flask commands are for local development; use the Production Docker target for a Gunicorn deployment.

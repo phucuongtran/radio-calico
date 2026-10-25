@@ -1,5 +1,9 @@
 # Radio Calico in Ubuntu-22.04
 
+For Docker Development and Production without installing Python dependencies in WSL, see [DOCKER.md](DOCKER.md). With Docker Engine or Docker Desktop WSL integration, use `docker compose -f compose.dev.yaml up --build` or `docker compose -f compose.prod.yaml up --build -d --wait`. The setup below is for running Python directly on WSL.
+
+If Compose reports a missing `/usr/local/lib/docker/cli-plugins/docker-buildx` while `docker buildx version` works, check for stale Docker Desktop WSL plugin links. Repair the Docker CLI plugin installation or use a separate `DOCKER_CONFIG` directory with working plugins in `cli-plugins/`. Local Docker verification in this workspace used `DOCKER_CONFIG=/tmp/radiocalico-docker-tools` to bypass those stale links; this temporary directory is not part of the application or its images.
+
 The distro disk is stored at E:\WSL\Ubuntu-22.04. This project is in the Linux home directory.
 The original E:\radiocalico remains as a backup. Use this Linux copy for future work.
 Every source file was copied and verified by SHA-256. A Windows .venv, if present, was renamed .venv-windows.

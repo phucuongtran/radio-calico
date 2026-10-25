@@ -18,7 +18,7 @@ Radio Calico là website nghe radio trực tuyến, hiển thị bài hát đang
 - SQLite lưu đánh giá và thông tin nội bộ; dữ liệu vẫn còn sau khi khởi động lại ứng dụng.
 - Không có đăng nhập. Định danh dựa trên cookie trình duyệt; xóa cookie hoặc đổi thiết bị tạo định danh mới. Chưa bảo đảm một phiếu cho mỗi người trên mọi thiết bị.
 - Khả năng phát lossless phụ thuộc trình duyệt, thiết bị, codec và dịch vụ stream. Test mô phỏng không bảo đảm phát thực tế.
-- Cách chạy hiện tại là môi trường phát triển cục bộ, bind `127.0.0.1`; chưa có quy trình triển khai production được mô tả trong repository.
+- Hỗ trợ chạy Flask cục bộ và Docker riêng cho Development/Production. Production dùng Gunicorn và volume SQLite trên một host; mặc định publish `127.0.0.1`. Xem [DOCKER.md](DOCKER.md). Việc cấu hình tên miền/TLS và triển khai công khai do môi trường vận hành quản lý.
 
 ## Bản đồ tài liệu
 
@@ -28,6 +28,7 @@ Radio Calico là website nghe radio trực tuyến, hiển thị bài hát đang
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Tech stack, module, luồng dữ liệu, API và database. |
 | [AGENTS.md](AGENTS.md) | Cách làm việc, khi cần hỏi lại, kiểm chứng và bàn giao. |
 | [README.md](README.md), [README.vi.md](README.vi.md) | Cài đặt, chạy, kiểm tra và vận hành cục bộ. |
+| [DOCKER.md](DOCKER.md) | Build/chạy Development và Production, volume, sao lưu và chuyển image đến máy khác. |
 | [Hướng dẫn thương hiệu](RadioCalicoStyle/RadioCalico_Style_Guide.txt) | Logo, màu sắc, typography và giao diện. |
 
 ## Bắt đầu nhanh

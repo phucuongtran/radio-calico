@@ -2,7 +2,20 @@
 
 Dự án sử dụng **Flask 3.1.3**, **Python 3.11** và mô-đun **sqlite3** có sẵn trong Python để xây dựng và thử nghiệm website trên máy tính cá nhân.
 
-Địa chỉ website khi máy chủ đang chạy: **http://127.0.0.1:3000**. Máy chủ chỉ nhận kết nối trên máy tính này. Dữ liệu SQLite từ cấu hình trước đã được giữ nguyên. Node.js chỉ cần để chạy test JavaScript; npm là tùy chọn và không cần cài package npm.
+Địa chỉ website khi máy chủ đang chạy: **http://127.0.0.1:3000**. Cách chạy Flask cục bộ và Docker Compose mặc định chỉ nhận kết nối trên máy tính này. Dữ liệu SQLite cục bộ từ cấu hình trước đã được giữ nguyên. Node.js chỉ cần để chạy test JavaScript; npm là tùy chọn và không cần cài package npm.
+
+## Chạy bằng Docker
+
+Máy chủ chỉ cần Docker Engine/Desktop, Compose và Buildx; dependency được cài trong image:
+
+```bash
+docker compose -f compose.dev.yaml up --build
+docker compose -f compose.prod.yaml up --build -d --wait
+```
+
+Chọn một môi trường: Development có Flask reload và công cụ test Python/Node; Production dùng Gunicorn, user không phải root, filesystem chỉ đọc và volume SQLite riêng. Cả hai mặc định dùng cổng 3000, nên cần đổi `DEV_PORT`/`PROD_PORT` nếu chạy đồng thời. Dữ liệu Docker độc lập với `data/` trên host và được giữ khi thay container hoặc chạy `docker compose down`.
+
+Xem [DOCKER.md](DOCKER.md) cho hướng dẫn cấu hình, kiểm thử trong container, sao lưu và chuyển image dựng sẵn đến máy chủ mà không cần cài Python hay thư viện ứng dụng.
 
 ## 1. Mở thư mục dự án
 

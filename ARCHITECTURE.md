@@ -10,9 +10,9 @@
 | Âm thanh | HTML audio, HLS.js 1.6.19 từ jsDelivr; native HLS dự phòng. |
 | Lưu trữ | SQLite qua `sqlite3` tích hợp Python; không dùng ORM. |
 | Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`; runner chung `scripts/test.py`. |
-| Vận hành | Flask development server, script PowerShell quản lý server nền. |
+| Vận hành | Flask development server; Docker Development với reload và Production với Gunicorn 26.2.0, volume SQLite. Script PowerShell dành cho server cục bộ. |
 
-Dependency Python được ghim trong [requirements.txt](requirements.txt). Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
+Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn cho image Production. Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
 
 ## File structure
 
@@ -24,6 +24,14 @@ radiocalico/
 ├── README.md               # Hướng dẫn chạy
 ├── README.vi.md            # Hướng dẫn tiếng Việt
 ├── requirements.txt        # Dependency Python
+├── requirements-production.txt # Thêm Gunicorn cho Production
+├── Dockerfile              # Target development và production, chung Python 3.11
+├── compose.dev.yaml        # Source bind mount, volume Development
+├── compose.prod.yaml       # Gunicorn, volume Production, runtime chỉ đọc
+├── .dockerignore           # Loại secrets, database và môi trường host khỏi build context
+├── DOCKER.md               # Vận hành và chuyển image giữa các máy
+├── gunicorn.conf.py        # 1 worker/4 threads, log stdout/stderr
+├── docker/healthcheck.py   # Probe HTTP và SQLite
 ├── package.json            # ES modules và lệnh test Node, không có dependency npm
 ├── .env.example            # Cấu hình mẫu
 ├── .gitignore
@@ -57,6 +65,7 @@ radiocalico/
 │       └── radio-calico-logo.png
 ├── scripts/
 │   ├── test.py             # Runner chung cho backend/frontend
+│   ├── test_docker.py      # Build và smoke test hai môi trường bằng volume tạm
 │   └── background.ps1      # Quản lý server nền
 ├── tests/                  # Unit/integration test Python; support.py tạo SQLite tạm
 ├── test/                   # Test Node.js cho controller/API; helpers/ mô phỏng trình duyệt
@@ -86,6 +95,9 @@ radiocalico/
 | `static/style.css`, `static/styles/`, `static/images/` | Entry CSS, stylesheet theo thành phần và ảnh công khai. |
 | `tests/`, `test/` | Unit/integration test Python (`test*.py`) và controller/API test Node (`*.test.cjs`), có helper dùng chung. |
 | `scripts/test.py` | Chạy hai phía, lọc `--ratings`, chọn `--backend`/`--frontend`, tổng hợp mã lỗi. |
+| `Dockerfile`, `compose.dev.yaml`, `compose.prod.yaml` | Image/Compose riêng cho Development và Production, volume SQLite độc lập. |
+| `gunicorn.conf.py`, `docker/healthcheck.py` | Server Production và health check HTTP/SQLite dùng chung cho hai image. |
+| `scripts/test_docker.py` | Smoke test HTTP, rating/CSRF, persistence và chạy suite trong Development bằng tài nguyên Docker tạm. |
 | `scripts/background.ps1` | Start/stop server nền; log trong `logs/`. |
 
 ## Luồng xử lý
@@ -181,6 +193,8 @@ Thứ tự ưu tiên: biến môi trường tiến trình → `.env` → mặc �
 | `DATABASE_PATH` | `./data/radiocalico.sqlite` | Đường dẫn tương đối tính từ thư mục dự án. |
 
 Khởi động lại sau khi đổi `.env`. Flask CLI bind `127.0.0.1`; `--debug` bật reload/debugger. Script nền ghi `logs/server.log`, `logs/server-error.log` và theo dõi tiến trình bằng PID cùng thời điểm khởi tạo.
+
+Docker sử dụng Python 3.11 và cổng nội bộ `3000`. Compose truyền `DATABASE_PATH=/data/radiocalico.sqlite`; named volume Development/Production tách biệt và giữ cả phiếu lẫn bí mật ký cookie qua lần thay container. Development mount source chỉ đọc, chạy Flask reload và có Node 22 để test. Production dùng Gunicorn 1 worker/4 threads, user UID/GID `10001:10001`, root filesystem chỉ đọc, `/tmp` tạm và log stdout/stderr. Không thay đổi API hoặc schema. Biến `DEV_PORT`, `PROD_PORT`, `PROD_BIND`, `RADIO_CALICO_IMAGE` chỉ dùng cho Compose; xem [.env.docker.example](.env.docker.example) và [DOCKER.md](DOCKER.md).
 
 `app.py db` liệt kê bảng; `app.py db "SQL"` chạy một câu SQL và commit, kể cả lệnh ghi. Khi sao lưu, dừng server rồi sao chép toàn bộ `data/`, gồm file SQLite phụ. Không đưa `.env`, dữ liệu, log hoặc bí mật vào quản lý phiên bản.
 
