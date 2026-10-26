@@ -1,5 +1,7 @@
 # Radio Calico — Kiến trúc kỹ thuật
 
+Sơ đồ trực quan Production, Development, luồng rating và CI: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md).
+
 ## Tech stack
 
 | Thành phần | Công nghệ hiện có trong repository |

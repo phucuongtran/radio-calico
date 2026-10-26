@@ -4,6 +4,8 @@ Radio Calico uses Flask 3.1.3 and Python 3.11. Development uses SQLite; Producti
 
 ## Docker Development and Production
 
+See [System architecture diagrams](SYSTEM_ARCHITECTURE.md) for Development/Production containers, network ports, rating data flow, and CI.
+
 With GNU Make available (Linux, macOS, or WSL), the shortcuts are:
 
 ```bash
