@@ -12,7 +12,7 @@
 | Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`; runner chung `scripts/test.py`. |
 | Vận hành | Flask development server; Docker Development với reload và Production với Nginx frontend, Gunicorn 26.2.0 API và PostgreSQL. Script PowerShell dành cho server cục bộ. |
 
-Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn và Psycopg cho image Production. Node chỉ cần cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test. `package.json` khai báo ES modules cho Node và cung cấp lệnh `npm test` tùy chọn. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
+Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn và Psycopg cho image Production. Node dùng cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test chức năng. `package.json` khai báo ES modules cho Node, cung cấp lệnh `npm test` tùy chọn và `npm run test:security` để chạy npm audit trên lockfile, gồm dependency phát triển, thất bại từ mức low trở lên hoặc khi audit lỗi. `make test-security` cần npm trên host; CI có job security riêng kiểm tra manifest/lockfile bằng npm ci rồi chạy target này. Lockfile hiện không có dependency npm; audit không bao phủ Python, image Docker, mã ứng dụng hay HLS.js từ CDN. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
 
 ## File structure
 

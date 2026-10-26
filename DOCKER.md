@@ -28,10 +28,13 @@ Nếu có GNU Make trên Linux/macOS/WSL, chạy `make help` để xem các lệ
 | `make test-ratings`, `make test-backend`, `make test-frontend` | Chọn bộ test trong Docker. |
 | `make test-local` | Chạy test bằng Python/Node trên host. |
 | `make test-docker` | Chạy smoke test bằng project/volume tạm, gồm PostgreSQL thật; cần Python 3 trên host. |
+| `make test-security` | Chạy npm audit trên host; cần Node/npm và kết nối registry khi có dependency. Không cần khởi động container. |
 
 `make test` không khởi động Production. Các ca PostgreSQL được skip khi không có `TEST_DATABASE_URL`; dùng `make test-docker` để kiểm tra đầy đủ với PostgreSQL tạm. `make test-local` tự chọn `.venv/bin/python` nếu có, nếu không dùng `python3`; có thể đặt `PYTHON` rõ ràng. Ví dụ: `make test-local PYTHON=.venv/bin/python TEST_ARGS=--ratings`.
 
 Mặc định Production dùng `.env.docker`; đổi bằng `make prod ENV_FILE=/path/to/private.env`. Các lệnh Make nhận biến Docker từ môi trường, gồm `DOCKER_CONFIG`, `DEV_PORT`, `PROD_PORT`. Có thể đổi tên project qua `DEV_PROJECT`/`PROD_PROJECT`; giữ cùng tên project khi chạy/dừng để dùng đúng volume. Make không có target xóa dữ liệu.
+
+`make test-security` kiểm tra dependency npm trong `package-lock.json`, gồm dependency phát triển, và thất bại khi có lỗ hổng mức low trở lên hoặc lỗi audit. Dự án hiện không có dependency npm; lệnh không quét image Docker, dependency Python hay HLS.js từ CDN. Image Development có Node nhưng không có npm, nên chạy lệnh này trên host. Xem [README.md](README.md#verify) cho phạm vi và cách cập nhật lockfile.
 
 ## Development
 

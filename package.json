@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.cjs",
-    "test:ratings": "node --test test/ratings-api.test.cjs test/ratings.test.cjs"
+    "test:ratings": "node --test test/ratings-api.test.cjs test/ratings.test.cjs",
+    "test:security": "npm audit --package-lock-only --include=dev --audit-level=low"
   }
 }
