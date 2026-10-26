@@ -10,7 +10,9 @@ Máy chủ cần Docker Engine/Desktop với Linux containers, Compose và Build
 | Source | Bind mount repository chỉ đọc | Source đóng trong image, không bind mount |
 | Test tools | Python 3.11, Node 22 | Python runtime và Psycopg 3.3.6; không chứa bộ test |
 
-Mặc định cả hai dùng **http://127.0.0.1:3000**. Đổi `DEV_PORT` hoặc `PROD_PORT` nếu chạy đồng thời. Các lệnh dưới đây chạy tại thư mục dự án.
+Development mặc định dùng **http://127.0.0.1:3000**, Production dùng **http://127.0.0.1:3001**. Có thể chạy đồng thời; đổi `DEV_PORT` hoặc `PROD_PORT` nếu cần. Các lệnh dưới đây chạy tại thư mục dự án.
+
+Dùng `make dev` cho Development ở 3000 và `make prod` cho Production ở 3001. Nếu file `.env.docker` cũ còn `PROD_PORT=3000`, đổi thành `PROD_PORT=3001`; biến môi trường đang export cũng cần khớp quy ước này. Nếu vẫn trùng cổng mà `docker ps` không thấy container giữ cổng, kiểm tra có đồng thời Docker Desktop và Docker Engine riêng trong Ubuntu WSL hay không; xem [hướng dẫn WSL](README.WSL.md#port-3000-occupied-by-a-second-docker-engine). Hai engine có volume database độc lập; không tự chuyển dữ liệu khi đổi engine.
 
 ## Lệnh Make
 
@@ -29,12 +31,15 @@ Nếu có GNU Make trên Linux/macOS/WSL, chạy `make help` để xem các lệ
 | `make test-local` | Chạy test bằng Python/Node trên host. |
 | `make test-docker` | Chạy smoke test bằng project/volume tạm, gồm PostgreSQL thật; cần Python 3 trên host. |
 | `make test-security` | Chạy npm audit trên host; cần Node/npm và kết nối registry khi có dependency. Không cần khởi động container. |
+| `make lint` | Kiểm tra Python bằng Ruff và JavaScript bằng ESLint trên host; cần cài công cụ lint, Node 22.13+. |
+| `make test-integration` | Chạy suite API/SQLite; chạy thêm PostgreSQL khi đặt `TEST_DATABASE_URL` tới database test riêng. |
+| `make test-build` | Build ba target Docker với tag tạm rồi gỡ tag đó; không khởi động service hoặc đụng volume. |
 
 `make test` không khởi động Production. Các ca PostgreSQL được skip khi không có `TEST_DATABASE_URL`; dùng `make test-docker` để kiểm tra đầy đủ với PostgreSQL tạm. `make test-local` tự chọn `.venv/bin/python` nếu có, nếu không dùng `python3`; có thể đặt `PYTHON` rõ ràng. Ví dụ: `make test-local PYTHON=.venv/bin/python TEST_ARGS=--ratings`.
 
 Mặc định Production dùng `.env.docker`; đổi bằng `make prod ENV_FILE=/path/to/private.env`. Các lệnh Make nhận biến Docker từ môi trường, gồm `DOCKER_CONFIG`, `DEV_PORT`, `PROD_PORT`. Có thể đổi tên project qua `DEV_PROJECT`/`PROD_PROJECT`; giữ cùng tên project khi chạy/dừng để dùng đúng volume. Make không có target xóa dữ liệu.
 
-`make test-security` kiểm tra dependency npm trong `package-lock.json`, gồm dependency phát triển, và thất bại khi có lỗ hổng mức low trở lên hoặc lỗi audit. Dự án hiện không có dependency npm; lệnh không quét image Docker, dependency Python hay HLS.js từ CDN. Image Development có Node nhưng không có npm, nên chạy lệnh này trên host. Xem [README.md](README.md#verify) cho phạm vi và cách cập nhật lockfile.
+`make test-security` kiểm tra dependency npm trong `package-lock.json`, gồm công cụ phát triển ESLint, và thất bại khi có lỗ hổng mức low trở lên hoặc lỗi audit. Lệnh không quét image Docker, dependency Python hay HLS.js từ CDN. Image Development có Node nhưng không có npm/Ruff/ESLint, nên chạy lint/audit trên host. Xem [README.md](README.md#verify) cho cách cài công cụ và cập nhật lockfile.
 
 ## Development
 
@@ -61,7 +66,7 @@ docker run --rm --network none radio-calico:development python scripts/test.py
 Sao chép `.env.docker.example` thành `.env.docker` bằng `cp .env.docker.example .env.docker` trên Linux/WSL hoặc `Copy-Item .env.docker.example .env.docker` trên PowerShell. Đặt mật khẩu riêng, đủ dài cho `POSTGRES_PASSWORD` trong file này trước khi chạy. Compose từ chối khởi động nếu mật khẩu còn trống. Không commit `.env.docker`.
 
 ```dotenv
-PROD_PORT=3000
+PROD_PORT=3001
 PROD_BIND=127.0.0.1
 RADIO_CALICO_IMAGE=radio-calico
 POSTGRES_DB=radiocalico
@@ -149,6 +154,6 @@ Trên Windows dùng `python scripts/test_docker.py`. Script tạo project/volume
 
 Development chạy toàn bộ test Python/Node; Production chạy lại suite rating trên PostgreSQL thật bằng các schema test có tên ngẫu nhiên. `TEST_DATABASE_URL` phải được đặt rõ ràng để chạy `tests/test_ratings_postgres.py`; nếu không, suite PostgreSQL được báo skip. Script chỉ xóa schema/project/volume/image tạm do nó tạo. Các test SQLite luôn ghi đè `DATABASE_URL` thành rỗng để không chạm database Production.
 
-Workflow `.github/workflows/tests.yml` có job Docker riêng để chạy các kiểm tra này. Kiểm tra CI sau khi đẩy thay đổi; HTTP smoke test không xác minh playback thực tế trong trình duyệt.
+Workflow `.github/workflows/tests.yml` có job Docker riêng để chạy các kiểm tra này, job `integration` dùng PostgreSQL 17 tạm và job `build` để kiểm tra riêng việc dựng ba image. Chạy `make test-build` hoặc `python3 scripts/test_docker.py --build-only` để chỉ build; script gỡ đúng tag ngẫu nhiên của lần test, còn layer/cache Docker có thể được giữ lại. Kiểm tra CI sau khi đẩy thay đổi; HTTP smoke test không xác minh playback thực tế trong trình duyệt.
 
 Tham khảo: [Psycopg parameterized queries](https://www.psycopg.org/psycopg3/docs/basic/params.html), [Nginx proxy](https://nginx.org/en/docs/http/ngx_http_proxy_module.html), [PostgreSQL official image](https://hub.docker.com/_/postgres).

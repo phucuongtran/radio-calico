@@ -29,6 +29,7 @@ Radio Calico là website nghe radio trực tuyến, hiển thị bài hát đang
 | [AGENTS.md](AGENTS.md) | Cách làm việc, khi cần hỏi lại, kiểm chứng và bàn giao. |
 | [README.md](README.md), [README.vi.md](README.vi.md) | Cài đặt, chạy, kiểm tra và vận hành cục bộ. |
 | [DOCKER.md](DOCKER.md) | Build/chạy Development và Production, volume, sao lưu và chuyển image đến máy khác. |
+| [PERFORMANCE.md](PERFORMANCE.md) | Phân tích tải trang, ưu tiên tối ưu và cách đo trước/sau. |
 | [Hướng dẫn thương hiệu](RadioCalicoStyle/RadioCalico_Style_Guide.txt) | Logo, màu sắc, typography và giao diện. |
 
 ## Bắt đầu nhanh

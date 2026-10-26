@@ -2,7 +2,7 @@
 
 Dự án sử dụng **Flask 3.1.3**, **Python 3.11** và mô-đun **sqlite3** có sẵn trong Python để xây dựng và thử nghiệm website trên máy tính cá nhân.
 
-Địa chỉ website khi máy chủ đang chạy: **http://127.0.0.1:3000**. Cách chạy Flask cục bộ và Docker Compose mặc định chỉ nhận kết nối trên máy tính này. Dữ liệu SQLite cục bộ từ cấu hình trước đã được giữ nguyên. Node.js chỉ cần để chạy test JavaScript; npm là tùy chọn và không cần cài package npm.
+Địa chỉ khi máy chủ đang chạy: Development/Flask cục bộ ở **http://127.0.0.1:3000**, Docker Production ở **http://127.0.0.1:3001**. Cách chạy Flask cục bộ và Docker Compose mặc định chỉ nhận kết nối trên máy tính này. Dữ liệu SQLite cục bộ từ cấu hình trước đã được giữ nguyên. Test chức năng JavaScript không cần cài package npm; linting dùng Node 22.13+ và npm để cài công cụ phát triển.
 
 ## Chạy bằng Docker
 
@@ -15,7 +15,7 @@ docker compose -f compose.dev.yaml up --build
 docker compose --env-file .env.docker -f compose.prod.yaml up --build -d --wait
 ```
 
-Chọn một môi trường: Development có Flask reload và công cụ test Python/Node; Production dùng Nginx phục vụ frontend, Gunicorn xử lý API và PostgreSQL lưu dữ liệu. Trước khi chạy Production, chép `.env.docker.example` thành `.env.docker` và đặt `POSTGRES_PASSWORD` riêng. Chỉ Nginx mở cổng ra host; PostgreSQL khởi tạo mới trong volume riêng và giữ nguyên SQLite cũ. Cả hai mặc định dùng cổng 3000, nên cần đổi `DEV_PORT`/`PROD_PORT` nếu chạy đồng thời. Dữ liệu Docker độc lập với `data/` trên host và được giữ khi thay container hoặc chạy `docker compose down`.
+Chọn một môi trường: Development có Flask reload và công cụ test Python/Node; Production dùng Nginx phục vụ frontend, Gunicorn xử lý API và PostgreSQL lưu dữ liệu. Trước khi chạy Production, chép `.env.docker.example` thành `.env.docker` và đặt `POSTGRES_PASSWORD` riêng. Chỉ Nginx mở cổng ra host; PostgreSQL khởi tạo mới trong volume riêng và giữ nguyên SQLite cũ. Development mặc định cổng 3000, Production cổng 3001 nên có thể chạy đồng thời. Biến môi trường được ưu tiên; nếu `.env.docker` cũ còn `PROD_PORT=3000`, đổi thành `PROD_PORT=3001`. Dữ liệu Docker độc lập với `data/` trên host và được giữ khi thay container hoặc chạy `docker compose down`.
 
 Xem [DOCKER.md](DOCKER.md) cho hướng dẫn cấu hình, kiểm thử trong container, sao lưu và chuyển image dựng sẵn đến máy chủ mà không cần cài Python hay thư viện ứng dụng.
 
@@ -128,7 +128,7 @@ Copy-Item .env.example .env
 | `static/style.css`, `static/styles/` | Entry CSS và stylesheet theo thành phần. |
 | `data/radiocalico.sqlite` | File SQLite lưu dữ liệu lâu dài. |
 | `requirements.txt` | Danh sách thư viện và phiên bản. |
-| `package.json` | Khai báo ES modules và lệnh test Node, không có dependency npm. |
+| `package.json` | ES modules, lệnh test/lint/audit và dependency phát triển ESLint; không có package npm cho runtime. |
 | `scripts/background.ps1` | Quản lý máy chủ chạy nền. |
 | `tests/test_app.py` | Kiểm thử tích hợp Flask và SQLite. |
 
@@ -189,6 +189,29 @@ Chạy test controller JavaScript bằng Node.js, không cần `npm install`:
 
 Nếu Node.js và npm có trong PATH, có thể dùng `npm test` hoặc `npm run test:ratings` cho riêng đánh giá. Các controller nhận môi trường mô phỏng trực tiếp qua hàm khởi tạo; test không gọi stream thật. Khi sửa player, kiểm tra thêm playback bằng trình duyệt có Internet để xác minh CDN, CORS và codec.
 
+Chạy các kiểm tra CI bổ sung trên Linux/WSL sau khi cài công cụ phát triển:
+
+```bash
+.venv/bin/python -m pip install -r requirements-lint.txt
+npm ci --ignore-scripts --no-audit --no-fund
+make lint
+make test-integration
+make test-build
+```
+
+`make lint` dùng Ruff kiểm tra lỗi Python và ESLint kiểm tra JavaScript theo môi trường browser/Node; cần Node 22.13+ cho ESLint. Có thể chọn `make lint-backend` hoặc `make lint-frontend`. Lệnh chỉ báo lỗi, không tự sửa file. Không dùng Make thì chạy Python môi trường ảo với `-m ruff check .` và chạy `npm run lint`.
+
+`make test-integration` chạy `tests.test_app`, `tests.test_ratings` và `tests.test_ratings_postgres`: API, cookie/CSRF, lưu/đổi phiếu, dữ liệu qua lần khởi tạo lại và lỗi database. SQLite dùng file tạm. Để chạy PostgreSQL, cài `requirements-production.txt` rồi đặt `TEST_DATABASE_URL` trỏ tới **database PostgreSQL thử nghiệm riêng**; nếu không có biến này thì các ca PostgreSQL được skip rõ ràng. Test chỉ tạo/xóa schema có tên ngẫu nhiên. Ví dụ khi server test đã chạy:
+
+```bash
+.venv/bin/python -m pip install -r requirements-production.txt
+TEST_DATABASE_URL=postgresql://test_user:test_password@127.0.0.1:5432/test_db make test-integration
+```
+
+Không dùng Make thì chạy `python -m unittest -v tests.test_app tests.test_ratings tests.test_ratings_postgres` bằng Python đã cài dependency. GitHub Actions có job `integration` riêng dùng service PostgreSQL 17 tạm và chờ healthy, nên các ca PostgreSQL trong job này được chạy thật.
+
+`make test-build` cần Docker và Python 3 trên host, tương đương `python scripts/test_docker.py --build-only`: build ba target Development, backend Production và frontend Nginx với tag ngẫu nhiên, sau đó gỡ đúng các tag của lần test, kể cả khi build lỗi. Không khởi động ứng dụng, không đụng volume database, không push image hay triển khai. Docker vẫn có thể giữ layer/cache dùng chung. Job `build` riêng chạy lệnh này trong CI; `make test-docker` tiếp tục kiểm tra HTTP qua Nginx, PostgreSQL và khôi phục khi lỗi dịch vụ. Job `lint`, `tests`, `integration`, `build`, `security`, `docker` báo kết quả riêng khi push/PR.
+
 Quét lỗ hổng dependency npm riêng với test ứng dụng:
 
 ```bash
@@ -199,7 +222,7 @@ npm run test:security
 
 Lệnh cần Node.js/npm trên host (CI dùng Node 22) và kết nối npm registry đã cấu hình khi có dependency. Image Development chỉ có Node, không có npm. Có thể chọn npm khác bằng `make test-security NPM=/path/to/npm`. Script chạy `npm audit --package-lock-only --include=dev --audit-level=low`, kiểm tra lockfile gồm cả dependency phát triển, trả mã lỗi nếu có lỗ hổng từ mức low trở lên hoặc quá trình audit gặp lỗi; không tự sửa dependency.
 
-Hiện dự án **không có dependency npm**, nên audit sạch tương ứng với **0 package phụ thuộc được kiểm tra**. Lệnh không quét dependency Python, image Docker, mã ứng dụng hoặc HLS.js tải trực tiếp từ CDN. Khi thay đổi dependency npm, cập nhật và commit `package-lock.json` bằng `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, sau đó quét lại. Job security riêng trong GitHub Actions kiểm tra manifest/lockfile bằng `npm ci --ignore-scripts --no-audit --no-fund` rồi chạy `make test-security`; lỗi audit làm job thất bại.
+Dependency npm hiện là các công cụ ESLint phục vụ phát triển và dependency gián tiếp của chúng; không có package npm cho runtime. Audit bao gồm các công cụ này. Lệnh không quét dependency Python, image Docker, mã ứng dụng hoặc HLS.js tải trực tiếp từ CDN. Khi thay đổi dependency npm, cập nhật và commit `package-lock.json` bằng `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, sau đó quét lại. Job security riêng trong GitHub Actions kiểm tra manifest/lockfile bằng `npm ci --ignore-scripts --no-audit --no-fund` rồi chạy `make test-security`; lỗi audit làm job thất bại.
 
 Kiểm tra tính tương thích các thư viện Python đã cài:
 

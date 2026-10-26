@@ -13,6 +13,7 @@
 node_modules
 .npm-cache
 .pip-cache
+.ruff_cache
 data
 logs
 **/*.log

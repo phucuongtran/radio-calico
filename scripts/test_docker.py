@@ -1,5 +1,6 @@
 """Build and smoke-test both Compose environments using disposable projects and data."""
 
+import argparse
 import json
 import os
 import secrets
@@ -28,7 +29,8 @@ if request['body'] is not None:
 message = Request(request['origin'] + request['path'], data=data,
                   headers=headers, method=request['method'])
 try:
-    response = urlopen(message, timeout=5)
+    # Allow the backend's five-second database connection timeout to complete.
+    response = urlopen(message, timeout=15)
 except HTTPError as error:
     response = error
 with response:
@@ -55,6 +57,23 @@ def http(container, path, environment, method='GET', body=None, cookie=None, csr
 def require(condition, message):
     if not condition:
         raise AssertionError(message)
+
+
+def build_images():
+    """Check every deployable target without starting services or touching volumes."""
+    environment = os.environ.copy()
+    prefix = f'radiocalico-build-{uuid.uuid4().hex[:10]}'
+    images = []
+    try:
+        for target in ('development', 'production', 'frontend'):
+            image = f'{prefix}:{target}'
+            images.append(image)
+            print(f'Building Docker target: {target}', flush=True)
+            docker('build', '--target', target, '--tag', image, '.', environment=environment)
+    finally:
+        # Remove only this run's tags; shared layers/cache remain available.
+        for image in images:
+            docker('image', 'rm', image, environment=environment, check=False)
 
 
 def smoke_test(mode):
@@ -162,5 +181,11 @@ def smoke_test(mode):
 
 
 if __name__ == '__main__':
-    for mode in ('dev', 'prod'):
-        smoke_test(mode)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--build-only', action='store_true', help='Only build all three Docker targets')
+    args = parser.parse_args()
+    if args.build_only:
+        build_images()
+    else:
+        for mode in ('dev', 'prod'):
+            smoke_test(mode)

@@ -13,4 +13,5 @@ logs/
 migration-wsl-receipt.json
 .pip-cache/
 __pycache__/
+.ruff_cache/
 *.py[cod]

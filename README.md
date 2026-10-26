@@ -1,6 +1,6 @@
 # Radio Calico — Flask, PostgreSQL and Nginx
 
-Radio Calico uses Flask 3.1.3 and Python 3.11. Development uses SQLite; Production uses PostgreSQL 17 and Nginx in front of the Gunicorn API. Open **http://127.0.0.1:3000** while the server is running. Local commands and Docker Compose bind to this computer by default.
+Radio Calico uses Flask 3.1.3 and Python 3.11. Development uses SQLite; Production uses PostgreSQL 17 and Nginx in front of the Gunicorn API. Open **http://127.0.0.1:3000** for Development/local Flask or **http://127.0.0.1:3001** for Docker Production while the server is running. Local commands and Docker Compose bind to this computer by default.
 
 ## Docker Development and Production
 
@@ -15,7 +15,7 @@ make test         # All tests in Docker; no host Python/Node needed
 
 Run `make help` for all targets. `make dev-down` / `make prod-down` stop containers and preserve database volumes; `make dev-status` / `make prod-status` show status, and `make dev-logs` / `make prod-logs` follow logs. `make env` preserves an existing environment file. `make test-ratings`, `make test-backend`, and `make test-frontend` select a Docker test suite. Use `make test-local` for local Python/Node tests or `make test-docker` for isolated container smoke tests including real PostgreSQL (requires host Python 3). Tests without `TEST_DATABASE_URL` report the PostgreSQL integration cases as skipped; `make test-docker` runs them against a disposable database.
 
-Override settings as needed, for example `make prod ENV_FILE=.env.docker` or `make test-local PYTHON=.venv/bin/python TEST_ARGS=--ratings`. Make inherits Docker environment variables such as `DOCKER_CONFIG`, `DEV_PORT`, and `PROD_PORT`. Development and Production default to the same host port, so stop one or select a different port before starting the other.
+Override settings as needed, for example `make prod ENV_FILE=.env.docker` or `make test-local PYTHON=.venv/bin/python TEST_ARGS=--ratings`. Make inherits Docker environment variables such as `DOCKER_CONFIG`, `DEV_PORT`, and `PROD_PORT`. Development defaults to host port 3000 and Production to 3001, so both can run together. Environment overrides take precedence; update `PROD_PORT=3001` if an existing `.env.docker` still specifies 3000.
 
 With Docker Engine/Desktop, Compose, and Buildx installed, run either environment without installing application dependencies on the host:
 
@@ -27,7 +27,7 @@ docker compose -f compose.dev.yaml up --build
 docker compose --env-file .env.docker -f compose.prod.yaml up --build -d --wait
 ```
 
-Both default to port 3000; stop one before starting the other or set different `DEV_PORT`/`PROD_PORT` values. Production publishes only Nginx, which serves HTML/static files and proxies `/api/*` to Gunicorn. PostgreSQL has a persistent volume and no published port. It starts a new database; existing SQLite files/volumes remain untouched. `docker compose --env-file .env.docker -f compose.prod.yaml down` keeps saved votes and the cookie signing secret. See [DOCKER.md](DOCKER.md) for environment settings, tests inside Docker, backups, and shipping a prebuilt image to another server. Production requires a private `POSTGRES_PASSWORD`; see the example environment file and DOCKER.md before starting.
+Development defaults to port 3000 and Production to 3001; override `DEV_PORT`/`PROD_PORT` if needed. Production publishes only Nginx, which serves HTML/static files and proxies `/api/*` to Gunicorn. PostgreSQL has a persistent volume and no published port. It starts a new database; existing SQLite files/volumes remain untouched. `docker compose --env-file .env.docker -f compose.prod.yaml down` keeps saved votes and the cookie signing secret. See [DOCKER.md](DOCKER.md) for environment settings, tests inside Docker, backups, and shipping a prebuilt image to another server. Production requires a private `POSTGRES_PASSWORD`; see the example environment file and DOCKER.md before starting.
 
 ## Radio player
 
@@ -110,7 +110,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-No virtual environment activation is needed when using the explicit interpreter path. SQLite is included with Python. Node.js is needed only for JavaScript controller tests; npm is optional.
+No virtual environment activation is needed when using the explicit interpreter path. SQLite is included with Python. Node.js runs the JavaScript controller tests; linting additionally needs Node 22.13+ and npm to install the development tools.
 
 ## Configuration and files
 
@@ -178,6 +178,29 @@ On Linux/WSL:
 
 The shared runner works from any working directory when invoked by its path, uses that same Python interpreter for backend tests, discovers JavaScript files without shell wildcard expansion, and reports each suite separately. It returns a nonzero exit code if either suite fails or Node is missing; a backend failure still allows frontend tests to run. Combine `--ratings` with `--backend` or `--frontend` to select one side. `npm test` runs all frontend tests; `npm run test:ratings` runs just the rating controller and API client tests.
 
+Additional CI checks can be run locally after installing the development tools:
+
+```bash
+.venv/bin/python -m pip install -r requirements-lint.txt
+npm ci --ignore-scripts --no-audit --no-fund
+make lint                  # Ruff for Python; ESLint for JavaScript (Node 22.13+)
+make test-integration      # Flask/SQLite and optional PostgreSQL integration tests
+make test-build            # Build development, production, and frontend Docker targets
+```
+
+Use `make lint-backend` / `make lint-frontend` to select one language. Ruff checks Python syntax, imports and common errors using [ruff.toml](ruff.toml); ESLint uses recommended rules with browser/Node globals in [eslint.config.js](eslint.config.js). Lint reports errors without rewriting files. For PowerShell without Make, run `.\.venv\Scripts\python.exe -m ruff check .` and `npm run lint`.
+
+`make test-integration` runs `tests.test_app`, `tests.test_ratings`, and `tests.test_ratings_postgres`. Install `requirements-production.txt` and set `TEST_DATABASE_URL` to a **disposable PostgreSQL test server** to run PostgreSQL tests; without it they are explicitly skipped. SQLite uses temporary files; PostgreSQL tests create/drop only randomly named test schemas. CI supplies a fresh PostgreSQL 17 service with a health check, so its PostgreSQL suite runs rather than skips. For example, with a disposable test server already running:
+
+```bash
+.venv/bin/python -m pip install -r requirements-production.txt
+TEST_DATABASE_URL=postgresql://test_user:test_password@127.0.0.1:5432/test_db make test-integration
+```
+
+Without Make, use `python -m unittest -v tests.test_app tests.test_ratings tests.test_ratings_postgres` with the appropriate Python interpreter. The integration suites check API responses, votes, cookies/CSRF, validation, persistence and database failures. End-to-end HTTP through Nginx remains covered by `make test-docker`.
+
+`make test-build` requires Docker and host Python 3; it calls `python scripts/test_docker.py --build-only`. It builds all three Docker targets with random temporary image tags and removes only those tags afterward, including after build failures. It starts no application containers and touches no database volumes; Docker may retain shared layers/build cache. It does not publish images or deploy the application.
+
 Run the npm dependency security scan separately:
 
 ```bash
@@ -188,7 +211,7 @@ npm run test:security
 
 This requires local Node.js/npm (Node 22 in CI) and access to the configured npm registry when dependencies are present. The Development image contains Node but not npm, so run this command on the host. `make test-security NPM=/path/to/npm` selects another npm executable. The scan uses `npm audit --package-lock-only --include=dev --audit-level=low`: it checks the committed lockfile, including development dependencies, and fails for reported vulnerabilities of low severity or higher, or audit errors. It reports findings without applying fixes. See the [npm audit documentation](https://docs.npmjs.com/cli/v11/commands/npm-audit/).
 
-There are currently no npm dependencies, so a clean audit checks **zero dependency packages**. This does not scan Python dependencies, Docker images, application code, or HLS.js loaded directly from the CDN. After changing npm dependencies, update and commit `package-lock.json` with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, then rerun the scan. Security scanning is separate from the normal application test runner.
+The npm dependencies are development tools for ESLint, including their transitive dependencies; there are no npm runtime packages. The audit includes those development tools. It does not scan Python dependencies, Docker images, application code, or HLS.js loaded directly from the CDN. After changing npm dependencies, update and commit `package-lock.json` with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, then rerun the scan. Security scanning is separate from the normal application test runner.
 
 | Test file | Responsibility |
 | --- | --- |
@@ -198,10 +221,22 @@ There are currently no npm dependencies, so a clean audit checks **zero dependen
 | `test/ratings.test.cjs` | Button state, accessible labels, response validation, track races, and confirmation after an uncertain POST. |
 | `tests/test_ratings_postgres.py` | Reuses the rating API suite against real PostgreSQL in disposable test schemas; requires `TEST_DATABASE_URL`. |
 | `tests/test_test_runner.py` | Suite selection, failure propagation, and missing runtime handling. |
+| `tests/test_build_runner.py` | Build failure propagation and cleanup of only this run's temporary image tags. |
 
 Extend backend integration tests using `tests/support.py`, which creates and cleans up a separate SQLite database per test. Frontend tests import helpers from `test/helpers/ratings.cjs` and call `initRatings` with simulated DOM, queued HTTP responses, and manually triggered timers. `settle()` flushes promise continuations; `abortableResponse` simulates a fetch that rejects on abort. For late-response races, queue a deferred response that intentionally ignores abort. Tests make no station/CDN requests and never open the project's database. They do not verify real browser keyboard interaction or playback.
 
-The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build the application images, test Nginx/PostgreSQL HTTP and persistence, run the complete suite inside Development, and run the rating API suite against real PostgreSQL. A separate security job validates the npm manifest/lockfile with `npm ci --ignore-scripts --no-audit --no-fund`, then runs `make test-security`; audit failures fail the job. No API secrets are needed. CI results must be checked after pushing the workflow.
+The workflow in `.github/workflows/tests.yml` runs on pushes and pull requests, with separate jobs:
+
+| Job | Checks |
+| --- | --- |
+| `lint` | `make lint`: Ruff and ESLint on Ubuntu with Python 3.11 and Node 22. |
+| `tests` | Complete backend/frontend suite on Ubuntu/Windows with Python 3.11/3.12 and Node 22. |
+| `integration` | `make test-integration`: Flask/SQLite and real PostgreSQL 17 using a disposable service database. |
+| `build` | `make test-build`: all three Docker targets, without deployment. |
+| `security` | Validate the manifest/lockfile with npm ci, then run `make test-security`. |
+| `docker` | HTTP, Nginx/PostgreSQL, persistence and failure/recovery smoke tests; complete suite inside Development and rating API suite on real PostgreSQL. |
+
+Each job reports failures independently. CI credentials are for disposable test data only; no Production credentials or API secrets are needed. CI results must be checked after pushing the workflow.
 
 Individual backend checks and the local server health check remain available:
 

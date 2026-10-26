@@ -37,7 +37,7 @@ RUN apt-get update \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY tests/ ./tests/
 COPY test/ ./test/
-COPY scripts/test.py ./scripts/test.py
+COPY scripts/test.py scripts/test_docker.py ./scripts/
 COPY package.json ./
 USER 10001:10001
 
