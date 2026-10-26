@@ -2,9 +2,18 @@
   "name": "radio-calico",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "test": "node --test test/*.test.cjs",
     "test:ratings": "node --test test/ratings-api.test.cjs test/ratings.test.cjs",
-    "test:security": "npm audit --package-lock-only --include=dev --audit-level=low"
+    "test:security": "npm audit --package-lock-only --include=dev --audit-level=low",
+    "lint": "eslint static test eslint.config.js --max-warnings=0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "globals": "17.13.0"
   }
 }

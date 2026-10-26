@@ -26,6 +26,9 @@
 - Backend: chạy `.\.venv\Scripts\python.exe -m unittest discover -v`; test dùng database tạm.
 - Controller: chạy `node --test test/player.test.cjs test/metadata.test.cjs test/ratings.test.cjs test/ratings-api.test.cjs`.
 - Runner chung: chạy `.\.venv\Scripts\python.exe scripts/test.py` trên Windows hoặc `.venv/bin/python scripts/test.py` trên Linux/WSL. Dùng `--ratings` để chạy riêng rating, thêm `--backend`/`--frontend` để chọn một phía. Xem phần Verify trong README để dùng helper và bổ sung test.
+- Lint: cài `requirements-lint.txt` và `npm ci --ignore-scripts --no-audit --no-fund`, dùng Node 22.13+ rồi chạy `make lint`; có thể chọn `make lint-backend`/`make lint-frontend`.
+- Integration: `make test-integration`; cài `requirements-production.txt` và đặt `TEST_DATABASE_URL` tới PostgreSQL test riêng để chạy đầy đủ. Không có URL thì các ca PostgreSQL được skip. CI có service PostgreSQL 17 tạm.
+- Build: `make test-build` build ba Docker target với tag ngẫu nhiên rồi gỡ riêng các tag đó, không đụng volume; cache/layer có thể được giữ lại.
 - Thêm test hồi quy cho thay đổi có rủi ro; kiểm tra phát âm thanh thực tế khi sửa player.
 - Khi sửa Docker: kiểm tra `docker compose -f compose.dev.yaml config --quiet`, với Production dùng `docker compose --env-file .env.docker -f compose.prod.yaml config --quiet` (cần `POSTGRES_PASSWORD`), rồi chạy `python3 scripts/test_docker.py` nếu có Docker daemon. Script chỉ dọn project/volume tạm của test; không xóa volume dữ liệu người dùng. Xem [DOCKER.md](DOCKER.md).
 - Nếu chỉ sửa tài liệu, kiểm tra nội dung, đường dẫn và lệnh; không bắt buộc chạy test ứng dụng.

@@ -10,6 +10,22 @@ The distro disk is stored at E:\WSL\Ubuntu-22.04. This project is in the Linux h
 The original E:\radiocalico remains as a backup. Use this Linux copy for future work.
 Every source file was copied and verified by SHA-256. A Windows .venv, if present, was renamed .venv-windows.
 
+## Port 3000 occupied by a second Docker engine
+
+Docker Desktop WSL integration and a separately installed Docker Engine inside Ubuntu have independent containers, images, and database volumes. `docker info --format '{{.Name}} | {{.OperatingSystem}}'` identifies the daemon the CLI currently uses; `docker ps` lists only that daemon's containers. An older Production stack in Ubuntu can still occupy port 3000 even when Docker Desktop shows no container publishing it. Windows may show that listener as `wslrelay`.
+
+Use one engine for this project. When using Docker Desktop, first confirm the native Ubuntu engine has no other services you need; then temporarily stop it to release the old stack's ports:
+
+```bash
+sudo systemctl stop docker.service docker.socket
+```
+
+This stops the native engine without deleting its containers or database volumes. Restarting that engine can start the old stack again and reintroduce the port conflict. Switching engines does not migrate database contents; their volumes remain separate.
+
+Development defaults to `make dev` at localhost:3000; Production defaults to `make prod` at localhost:3001 (requires `POSTGRES_PASSWORD`). Update `PROD_PORT=3001` in older `.env.docker` files, and unset or update conflicting exported port overrides. See [DOCKER.md](DOCKER.md) for startup and persistence.
+
+For CI checks on the host, install `requirements-lint.txt` into the project venv and run `npm ci --ignore-scripts --no-audit --no-fund` with Node 22.13+; then use `make lint`. `make test-integration` runs API/SQLite tests and includes PostgreSQL when `TEST_DATABASE_URL` points to a disposable test server (requires `requirements-production.txt`). `make test-build` builds the three Docker targets and removes only its random temporary tags; shared cache can remain. See [Verify](README.md#verify) for the full workflow.
+
 ## Create the Linux environment
 
 Ubuntu 22.04 normally provides Python 3.10; this project documents Python 3.11 or newer.

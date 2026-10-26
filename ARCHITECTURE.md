@@ -12,7 +12,7 @@
 | Kiểm thử | Python `unittest`; Node.js `node:test` và `node:assert/strict`; runner chung `scripts/test.py`. |
 | Vận hành | Flask development server; Docker Development với reload và Production với Nginx frontend, Gunicorn 26.2.0 API và PostgreSQL. Script PowerShell dành cho server cục bộ. |
 
-Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn và Psycopg cho image Production. Node dùng cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test chức năng. `package.json` khai báo ES modules cho Node, cung cấp lệnh `npm test` tùy chọn và `npm run test:security` để chạy npm audit trên lockfile, gồm dependency phát triển, thất bại từ mức low trở lên hoặc khi audit lỗi. `make test-security` cần npm trên host; CI có job security riêng kiểm tra manifest/lockfile bằng npm ci rồi chạy target này. Lockfile hiện không có dependency npm; audit không bao phủ Python, image Docker, mã ứng dụng hay HLS.js từ CDN. Hiện chưa cấu hình formatter, linter hoặc ngưỡng coverage.
+Dependency Python được ghim trong [requirements.txt](requirements.txt); [requirements-production.txt](requirements-production.txt) bổ sung Gunicorn và Psycopg cho image Production. Node dùng cho test JavaScript; không cần cài package npm để chạy ứng dụng hoặc test chức năng. `package.json` khai báo ES modules cho Node, cung cấp lệnh `npm test` tùy chọn và `npm run test:security` để chạy npm audit trên lockfile, gồm dependency phát triển, thất bại từ mức low trở lên hoặc khi audit lỗi. `make test-security` cần npm trên host; CI có job security riêng kiểm tra manifest/lockfile bằng npm ci rồi chạy target này. Lockfile chứa công cụ lint ESLint và dependency phát triển gián tiếp; audit không bao phủ Python, image Docker, mã ứng dụng hay HLS.js từ CDN. Linting dùng Ruff được ghim trong `requirements-lint.txt` và ESLint trong `package-lock.json`, cấu hình tại `ruff.toml` và `eslint.config.js`; ESLint cần Node 22.13+. Chưa cấu hình formatter hoặc ngưỡng coverage.
 
 ## File structure
 
@@ -35,7 +35,11 @@ radiocalico/
 ├── docker/healthcheck.py   # Probe HTTP và database đang cấu hình
 ├── docker/render_frontend.py # Render HTML khi build, không mở database
 ├── docker/nginx.conf      # Static frontend và proxy /api/* tới backend
-├── package.json            # ES modules và lệnh test Node, không có dependency npm
+├── package.json            # ES modules, test/lint/audit; ESLint là dependency phát triển
+├── package-lock.json       # Ghim dependency công cụ JavaScript
+├── requirements-lint.txt   # Ghim Ruff; không nằm trong image runtime
+├── ruff.toml               # Quy tắc lint Python
+├── eslint.config.js        # Quy tắc lint browser/Node JavaScript
 ├── .env.example            # Cấu hình mẫu
 ├── .gitignore
 ├── app.py                  # Flask factory, route và CLI
@@ -101,7 +105,7 @@ radiocalico/
 | `Makefile` | Shortcut Docker dev/prod và test; tạo env không ghi đè, dừng container giữ volume; `make help` liệt kê lệnh. |
 | `Dockerfile`, `compose.dev.yaml`, `compose.prod.yaml` | Development Flask/SQLite và Production Nginx/Gunicorn/PostgreSQL; volume độc lập. |
 | `gunicorn.conf.py`, `docker/healthcheck.py` | Server API Production và health check HTTP/database theo engine. |
-| `scripts/test_docker.py` | Smoke test HTTP, rating/CSRF, persistence và chạy suite trong Development bằng tài nguyên Docker tạm. |
+| `scripts/test_docker.py` | Smoke test HTTP, rating/CSRF, persistence và chạy suite trong Development bằng tài nguyên Docker tạm; `--build-only` dựng ba image với tag ngẫu nhiên rồi gỡ riêng các tag đó. |
 | `scripts/background.ps1` | Start/stop server nền; log trong `logs/`. |
 
 ## Luồng xử lý
@@ -199,8 +203,12 @@ Thứ tự ưu tiên: biến môi trường tiến trình → `.env` → mặc �
 
 Khởi động lại sau khi đổi `.env`. Flask CLI bind `127.0.0.1`; `--debug` bật reload/debugger. Script nền ghi `logs/server.log`, `logs/server-error.log` và theo dõi tiến trình bằng PID cùng thời điểm khởi tạo.
 
-Docker Development dùng Python 3.11, Flask reload, Node 22 và SQLite trong volume `ratings-data`. Production có Nginx `web:8080`, Gunicorn `app:3000` và PostgreSQL `db:5432`; chỉ Nginx publish cổng host. HTML được render lúc build, Nginx phục vụ HTML/static và proxy `/api/*` cùng origin. Backend nhận `DATABASE_URL=postgresql://` cùng biến libpq, không chứa password trong URL. Compose yêu cầu `POSTGRES_PASSWORD`, chờ health theo thứ tự db → app → web. Nginx và backend chạy non-root, filesystem chỉ đọc; PostgreSQL có volume mới `postgres-data`, không tái sử dụng/xóa SQLite cũ. Xem [.env.docker.example](.env.docker.example) và [DOCKER.md](DOCKER.md) cho khởi động, credential và backup.
+Docker Development dùng Python 3.11, Flask reload, Node 22 và SQLite trong volume `ratings-data`. Production có Nginx `web:8080`, Gunicorn `app:3000` và PostgreSQL `db:5432`; chỉ Nginx publish cổng host. Development mặc định host `3000` → Flask `3000`; Production mặc định host `3001` → Nginx `8080`. Cổng nội bộ của backend/database giữ nguyên. HTML được render lúc build, Nginx phục vụ HTML/static và proxy `/api/*` cùng origin. Backend nhận `DATABASE_URL=postgresql://` cùng biến libpq, không chứa password trong URL. Compose yêu cầu `POSTGRES_PASSWORD`, chờ health theo thứ tự db → app → web. Nginx và backend chạy non-root, filesystem chỉ đọc; PostgreSQL có volume mới `postgres-data`, không tái sử dụng/xóa SQLite cũ. Xem [.env.docker.example](.env.docker.example) và [DOCKER.md](DOCKER.md) cho khởi động, credential và backup.
 
 `app.py db` liệt kê bảng theo engine; `app.py db "SQL"` chạy một câu SQL và commit, kể cả lệnh ghi. Với SQLite, dừng server rồi sao chép toàn bộ `data/`, gồm file phụ. Với PostgreSQL, dùng `pg_dump`/`pg_restore` như [DOCKER.md](DOCKER.md). Không đưa `.env`, dữ liệu, log hoặc bí mật vào quản lý phiên bản.
 
 Lệnh cài đặt, chạy và test: [README.md](README.md). Mục tiêu sản phẩm: [PROJECT.md](PROJECT.md). Quy tắc làm việc: [AGENTS.md](AGENTS.md).
+
+## Kiểm tra CI
+
+Workflow `.github/workflows/tests.yml` chạy các job riêng khi push/PR: `lint` (Ruff/ESLint), `tests` (backend/frontend trên Ubuntu/Windows), `integration` (API/SQLite và PostgreSQL 17 service tạm), `build` (ba Docker target), `security` (npm audit gồm dependency lint), `docker` (HTTP/persistence/failure-recovery qua Compose). CI integration cung cấp `TEST_DATABASE_URL`; test tạo schema ngẫu nhiên và không sử dụng database Production. Các target local tương ứng là `make lint`, `make test-local`, `make test-integration`, `make test-build`, `make test-security`, `make test-docker`. Xem README để cài công cụ và cấu hình server test.

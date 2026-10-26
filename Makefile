@@ -12,13 +12,14 @@ DEV_COMPOSE = $(DOCKER) compose -p "$(DEV_PROJECT)" -f compose.dev.yaml
 PROD_COMPOSE = $(DOCKER) compose --env-file "$(ENV_FILE)" -p "$(PROD_PROJECT)" -f compose.prod.yaml
 
 .PHONY: help env dev prod dev-down prod-down dev-logs prod-logs dev-status prod-status \
-        test test-ratings test-backend test-frontend test-local test-docker test-security check-prod-env
+        test test-ratings test-backend test-frontend test-local test-docker test-security \
+        lint lint-backend lint-frontend test-integration test-build check-prod-env
 
 help:
 	@printf '%s\n' \
 	  'make env            Create private .env.docker from the example (keeps existing files)' \
-	  'make dev            Build/start Development in the foreground (Ctrl+C to stop)' \
-	  'make prod           Build/start healthy Production services in the background' \
+	  'make dev            Build/start Development at localhost:3000 (Ctrl+C to stop)' \
+	  'make prod           Build/start healthy Production at localhost:3001 in the background' \
 	  'make dev-down       Stop Development and keep its database volume' \
 	  'make prod-down      Stop Production and keep its database volume' \
 	  'make dev-logs       Follow Development logs' \
@@ -32,6 +33,9 @@ help:
 	  'make test-local     Run tests using local Python and Node' \
 	  'make test-docker    Run isolated Docker smoke tests, including real PostgreSQL' \
 	  'make test-security  Audit locked npm dependencies using local npm (registry access required)' \
+	  'make lint           Lint Python and JavaScript using local Ruff and ESLint' \
+	  'make test-integration Run Flask/SQLite and PostgreSQL integration suites locally' \
+	  'make test-build     Build all three Docker targets using disposable image tags' \
 	  '' \
 	  'Production: run make env, then set POSTGRES_PASSWORD in .env.docker.' \
 	  'Overrides: ENV_FILE, PYTHON, NPM, DOCKER, DEV_PROJECT, PROD_PROJECT, TEST_ARGS.'
@@ -92,3 +96,17 @@ test-docker:
 
 test-security:
 	$(NPM) run test:security
+
+lint: lint-backend lint-frontend
+
+lint-backend:
+	"$(PYTHON)" -m ruff check .
+
+lint-frontend:
+	$(NPM) run lint
+
+test-integration:
+	"$(PYTHON)" -m unittest -v tests.test_app tests.test_ratings tests.test_ratings_postgres
+
+test-build:
+	"$(PYTHON)" scripts/test_docker.py --build-only
