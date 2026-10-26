@@ -2,6 +2,7 @@
 
 DOCKER ?= docker
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+NPM ?= npm
 ENV_FILE ?= .env.docker
 DEV_PROJECT ?= radio-calico-dev
 PROD_PROJECT ?= radio-calico-prod
@@ -11,7 +12,7 @@ DEV_COMPOSE = $(DOCKER) compose -p "$(DEV_PROJECT)" -f compose.dev.yaml
 PROD_COMPOSE = $(DOCKER) compose --env-file "$(ENV_FILE)" -p "$(PROD_PROJECT)" -f compose.prod.yaml
 
 .PHONY: help env dev prod dev-down prod-down dev-logs prod-logs dev-status prod-status \
-        test test-ratings test-backend test-frontend test-local test-docker check-prod-env
+        test test-ratings test-backend test-frontend test-local test-docker test-security check-prod-env
 
 help:
 	@printf '%s\n' \
@@ -30,9 +31,10 @@ help:
 	  'make test-frontend  Run JavaScript tests inside Docker' \
 	  'make test-local     Run tests using local Python and Node' \
 	  'make test-docker    Run isolated Docker smoke tests, including real PostgreSQL' \
+	  'make test-security  Audit locked npm dependencies using local npm (registry access required)' \
 	  '' \
 	  'Production: run make env, then set POSTGRES_PASSWORD in .env.docker.' \
-	  'Overrides: ENV_FILE, PYTHON, DOCKER, DEV_PROJECT, PROD_PROJECT, TEST_ARGS.'
+	  'Overrides: ENV_FILE, PYTHON, NPM, DOCKER, DEV_PROJECT, PROD_PROJECT, TEST_ARGS.'
 
 env:
 	@if [ -e "$(ENV_FILE)" ]; then \
@@ -87,3 +89,6 @@ test-local:
 
 test-docker:
 	"$(PYTHON)" scripts/test_docker.py
+
+test-security:
+	$(NPM) run test:security

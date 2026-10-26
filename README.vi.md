@@ -189,7 +189,19 @@ Chạy test controller JavaScript bằng Node.js, không cần `npm install`:
 
 Nếu Node.js và npm có trong PATH, có thể dùng `npm test` hoặc `npm run test:ratings` cho riêng đánh giá. Các controller nhận môi trường mô phỏng trực tiếp qua hàm khởi tạo; test không gọi stream thật. Khi sửa player, kiểm tra thêm playback bằng trình duyệt có Internet để xác minh CDN, CORS và codec.
 
-Kiểm tra các thư viện phụ thuộc:
+Quét lỗ hổng dependency npm riêng với test ứng dụng:
+
+```bash
+make test-security
+# Không có Make, có thể chạy cả trong PowerShell:
+npm run test:security
+```
+
+Lệnh cần Node.js/npm trên host (CI dùng Node 22) và kết nối npm registry đã cấu hình khi có dependency. Image Development chỉ có Node, không có npm. Có thể chọn npm khác bằng `make test-security NPM=/path/to/npm`. Script chạy `npm audit --package-lock-only --include=dev --audit-level=low`, kiểm tra lockfile gồm cả dependency phát triển, trả mã lỗi nếu có lỗ hổng từ mức low trở lên hoặc quá trình audit gặp lỗi; không tự sửa dependency.
+
+Hiện dự án **không có dependency npm**, nên audit sạch tương ứng với **0 package phụ thuộc được kiểm tra**. Lệnh không quét dependency Python, image Docker, mã ứng dụng hoặc HLS.js tải trực tiếp từ CDN. Khi thay đổi dependency npm, cập nhật và commit `package-lock.json` bằng `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, sau đó quét lại. Job security riêng trong GitHub Actions kiểm tra manifest/lockfile bằng `npm ci --ignore-scripts --no-audit --no-fund` rồi chạy `make test-security`; lỗi audit làm job thất bại.
+
+Kiểm tra tính tương thích các thư viện Python đã cài:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip check

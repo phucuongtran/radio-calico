@@ -178,6 +178,18 @@ On Linux/WSL:
 
 The shared runner works from any working directory when invoked by its path, uses that same Python interpreter for backend tests, discovers JavaScript files without shell wildcard expansion, and reports each suite separately. It returns a nonzero exit code if either suite fails or Node is missing; a backend failure still allows frontend tests to run. Combine `--ratings` with `--backend` or `--frontend` to select one side. `npm test` runs all frontend tests; `npm run test:ratings` runs just the rating controller and API client tests.
 
+Run the npm dependency security scan separately:
+
+```bash
+make test-security
+# Without Make (also works in PowerShell):
+npm run test:security
+```
+
+This requires local Node.js/npm (Node 22 in CI) and access to the configured npm registry when dependencies are present. The Development image contains Node but not npm, so run this command on the host. `make test-security NPM=/path/to/npm` selects another npm executable. The scan uses `npm audit --package-lock-only --include=dev --audit-level=low`: it checks the committed lockfile, including development dependencies, and fails for reported vulnerabilities of low severity or higher, or audit errors. It reports findings without applying fixes. See the [npm audit documentation](https://docs.npmjs.com/cli/v11/commands/npm-audit/).
+
+There are currently no npm dependencies, so a clean audit checks **zero dependency packages**. This does not scan Python dependencies, Docker images, application code, or HLS.js loaded directly from the CDN. After changing npm dependencies, update and commit `package-lock.json` with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`, then rerun the scan. Security scanning is separate from the normal application test runner.
+
 | Test file | Responsibility |
 | --- | --- |
 | `tests/test_ratings_unit.py` | Song normalization, identity boundaries, and listener/CSRF session creation without a database. |
@@ -189,7 +201,7 @@ The shared runner works from any working directory when invoked by its path, use
 
 Extend backend integration tests using `tests/support.py`, which creates and cleans up a separate SQLite database per test. Frontend tests import helpers from `test/helpers/ratings.cjs` and call `initRatings` with simulated DOM, queued HTTP responses, and manually triggered timers. `settle()` flushes promise continuations; `abortableResponse` simulates a fetch that rejects on abort. For late-response races, queue a deferred response that intentionally ignores abort. Tests make no station/CDN requests and never open the project's database. They do not verify real browser keyboard interaction or playback.
 
-The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build the application images, test Nginx/PostgreSQL HTTP and persistence, run the complete suite inside Development, and run the rating API suite against real PostgreSQL. No npm installation or API secrets are needed. CI results must be checked after pushing the workflow.
+The workflow in `.github/workflows/tests.yml` runs the same complete command on pushes and pull requests, on Ubuntu and Windows with Python 3.11/3.12 and Node 22. Its Docker job runs `python scripts/test_docker.py` to build the application images, test Nginx/PostgreSQL HTTP and persistence, run the complete suite inside Development, and run the rating API suite against real PostgreSQL. A separate security job validates the npm manifest/lockfile with `npm ci --ignore-scripts --no-audit --no-fund`, then runs `make test-security`; audit failures fail the job. No API secrets are needed. CI results must be checked after pushing the workflow.
 
 Individual backend checks and the local server health check remain available:
 
