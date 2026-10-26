@@ -26,6 +26,7 @@ Radio Calico là website nghe radio trực tuyến, hiển thị bài hát đang
 | --- | --- |
 | [PROJECT.md](PROJECT.md) | Mục tiêu, tính năng, phạm vi sản phẩm. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Tech stack, module, luồng dữ liệu, API và database. |
+| [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) | Sơ đồ Mermaid Production/Development, cổng, lưu trữ, rating và CI. |
 | [AGENTS.md](AGENTS.md) | Cách làm việc, khi cần hỏi lại, kiểm chứng và bàn giao. |
 | [README.md](README.md), [README.vi.md](README.vi.md) | Cài đặt, chạy, kiểm tra và vận hành cục bộ. |
 | [DOCKER.md](DOCKER.md) | Build/chạy Development và Production, volume, sao lưu và chuyển image đến máy khác. |

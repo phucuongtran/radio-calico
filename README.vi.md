@@ -6,6 +6,8 @@ Dự án sử dụng **Flask 3.1.3**, **Python 3.11** và mô-đun **sqlite3** c
 
 ## Chạy bằng Docker
 
+Xem [sơ đồ kiến trúc hệ thống](SYSTEM_ARCHITECTURE.md) để hiểu container Development/Production, cổng mạng, lưu trữ, luồng rating và CI.
+
 Nếu có GNU Make (trên Windows dùng terminal WSL), có thể chạy `make dev`, `make prod`, `make test`. Trước lần chạy Production đầu tiên, dùng `make env` để tạo `.env.docker` rồi đặt `POSTGRES_PASSWORD`. `make env` không ghi đè file đã có. Xem `make help` cho các lệnh dừng, log, trạng thái và chọn bộ test. `make test` chạy trong container; `make test-local` dùng Python/Node trên host; `make test-docker` kiểm tra đầy đủ cả PostgreSQL bằng dữ liệu tạm. Các lệnh dừng `make dev-down` và `make prod-down` giữ nguyên volume.
 
 Máy chủ chỉ cần Docker Engine/Desktop, Compose và Buildx; dependency được cài trong image:
